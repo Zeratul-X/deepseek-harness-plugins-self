@@ -7,7 +7,8 @@
 //    the official chip label gets clipped inside the input), opens the code
 //    preview overlay on click, and removes the reference via the ✕ button.
 // 3) clicking the '@path' chip in the composer (or a dock entry) opens a file
-//    preview overlay with line selection; confirming rewrites the chip into
+//    preview overlay with line selection (click a line number, Shift-click /
+//    drag for a range, Ctrl+F to search); confirming rewrites the chip into
 //    '@relative/path line <a>-<b>' in the draft.
 window.__ModuleLoader__.load({
   id: 'harness-file-ref',
@@ -104,12 +105,26 @@ window.__ModuleLoader__.load({
       '.rs-foot button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}',
       '.rs-foot button:disabled{opacity:.5;cursor:not-allowed}',
       '.rs-ok{border-color:transparent!important;background:var(--dsw-alias-button-info-fill)!important;color:#fff!important}',
+      // VSCode 风格行内搜索条（Ctrl+F）
+      '.rs-search{display:none;align-items:center;gap:6px;padding:6px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);flex:none}',
+      '.rs-search.open{display:flex}',
+      '.rs-search input{flex:1;min-width:0;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:6px;padding:4px 8px;font-size:12px;outline:none;font-family:inherit}',
+      '.rs-search input:focus{border-color:var(--dsw-alias-state-business-primary)}',
+      '.rs-count{font-size:11px;color:var(--dsw-alias-label-tertiary);min-width:4em;text-align:center;flex:none}',
+      '.rs-nav{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);border-radius:6px;padding:1px 8px;font-size:12px;cursor:pointer;flex:none;line-height:18px}',
+      '.rs-nav:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.rs-body mark{background:rgba(255,213,0,.32);color:inherit;border-radius:2px;padding:0}',
+      '.rs-body mark.current{background:rgba(255,166,0,.55)}',
+      '.rs-row.current-match{box-shadow:inset 3px 0 0 var(--dsw-alias-state-business-primary)}',
     ].join('')
 
     let styleEl = null
     let overlay = null
     let sel = { anchor: null, current: null, rows: [] }
+    let dragging = false
     let chipEl = null
+    let search = { input: null, countEl: null, matches: [], index: -1, rows: [] }
+    let searchTimer = null
 
     function ensureStyle() {
       if (styleEl) return
@@ -166,11 +181,13 @@ window.__ModuleLoader__.load({
     }
 
     function closeOverlay() {
+      closeSearch()
       if (overlay) {
         overlay.remove()
         overlay = null
       }
       sel = { anchor: null, current: null, rows: [] }
+      dragging = false
       chipEl = null
     }
 
@@ -206,6 +223,7 @@ window.__ModuleLoader__.load({
       if (e.target && e.target.closest && e.target.closest('.rs-ln')) {
         const idx = rowIndexOf(e.target)
         if (idx >= 0) {
+          dragging = true
           if (e.shiftKey && sel.anchor !== null) sel.current = idx
           else {
             sel.anchor = idx
@@ -217,8 +235,13 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** 松开鼠标结束拖拽；拖拽结束后 hover 不再扩展选择范围。 */
+    function onDocUp() {
+      dragging = false
+    }
+
     function onDocMove(e) {
-      if (sel.anchor === null || !overlay) return
+      if (!dragging || sel.anchor === null || !overlay) return
       const el = document.elementFromPoint(e.clientX, e.clientY)
       const idx = rowIndexOf(el)
       if (idx >= 0 && idx !== sel.current) {
@@ -227,8 +250,128 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // ---------- VSCode 风格行内搜索（Ctrl+F） ----------
+
+    function escapeHtml(text) {
+      return text.replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      })
+    }
+
+    function escapeRegExp(text) {
+      return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    }
+
+    function searchOpen() {
+      return !!overlay && !!overlay.querySelector('.rs-search.open')
+    }
+
+    function updateCount() {
+      search.countEl.textContent =
+        search.matches.length === 0 ? '' : search.index + 1 + '/' + search.matches.length
+    }
+
+    /** 清除所有高亮与当前匹配，把每行还原为纯文本。 */
+    function clearMarks() {
+      search.matches = []
+      search.index = -1
+      search.rows.forEach(function (row) {
+        row.classList.remove('current-match')
+        const code = row.querySelector('.rs-code')
+        if (code) code.textContent = code.textContent
+      })
+      updateCount()
+    }
+
+    /** 按输入词重建每行高亮并收集所有匹配；匹配时跳到第一个。 */
+    function runSearch() {
+      const q = search.input.value
+      if (q === '') {
+        clearMarks()
+        return
+      }
+      const pattern = escapeRegExp(q)
+      search.matches = []
+      search.rows.forEach(function (row) {
+        const code = row.querySelector('.rs-code')
+        const text = code.textContent
+        const re = new RegExp(pattern, 'gi')
+        let html = ''
+        let last = 0
+        let m
+        while ((m = re.exec(text)) !== null) {
+          if (m.index === re.lastIndex) re.lastIndex++
+          html += escapeHtml(text.slice(last, m.index))
+          html += '<mark data-offset="' + m.index + '">' + escapeHtml(m[0]) + '</mark>'
+          search.matches.push({ row: row, offset: m.index })
+          last = m.index + m[0].length
+        }
+        html += escapeHtml(text.slice(last))
+        code.innerHTML = html
+      })
+      search.index = -1
+      if (search.matches.length > 0) jumpToMatch(1)
+      else search.countEl.textContent = '0/0'
+    }
+
+    /** 循环跳转到下一个/上一个匹配，滚动定位并标记当前匹配。 */
+    function jumpToMatch(dir) {
+      if (search.matches.length === 0) return
+      const old = search.matches[search.index]
+      if (old) {
+        const oldMark = old.row.querySelector('mark.current')
+        if (oldMark) oldMark.classList.remove('current')
+        old.row.classList.remove('current-match')
+      }
+      search.index = (search.index + dir + search.matches.length) % search.matches.length
+      const match = search.matches[search.index]
+      const marks = match.row.querySelectorAll('mark')
+      for (let i = 0; i < marks.length; i++) {
+        if (Number(marks[i].getAttribute('data-offset')) === match.offset) {
+          marks[i].classList.add('current')
+          break
+        }
+      }
+      match.row.classList.add('current-match')
+      match.row.scrollIntoView({ block: 'center' })
+      updateCount()
+    }
+
+    /** 显示搜索条并聚焦（Ctrl+F）。 */
+    function openSearch() {
+      if (!overlay) return
+      const bar = overlay.querySelector('.rs-search')
+      if (!bar) return
+      bar.classList.add('open')
+      search.input.focus()
+      search.input.select()
+    }
+
+    /** 隐藏搜索条并清除高亮（Esc / ✕）。 */
+    function closeSearch() {
+      const bar = overlay && overlay.querySelector('.rs-search')
+      if (bar) bar.classList.remove('open')
+      clearMarks()
+    }
+
     function onKeyDown(e) {
-      if (e.key === 'Escape') closeOverlay()
+      // 浮层关闭后监听仍挂在 document 上（直到被替换/卸载），
+      // 必须先判 overlay，否则 Ctrl+F 会被永久劫持。
+      if (!overlay) return
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        openSearch()
+        return
+      }
+      if (e.key === 'Escape') {
+        if (searchOpen()) closeSearch()
+        else closeOverlay()
+        return
+      }
+      if (searchOpen() && e.key === 'Enter') {
+        e.preventDefault()
+        jumpToMatch(e.shiftKey ? -1 : 1)
+      }
     }
 
     /** Open the preview overlay for one workspace-relative path (dock chip or in-composer chip). */
@@ -236,7 +379,10 @@ window.__ModuleLoader__.load({
       if (!path) return
       if (target) chipEl = target
       if (overlay) {
-        // 替换旧浮层但保留 chipEl（line 引用插入的目标占位符）
+        // 替换旧浮层：先注销 document 级监听，避免重复注册
+        document.removeEventListener('mousemove', onDocMove, true)
+        document.removeEventListener('mouseup', onDocUp, true)
+        document.removeEventListener('keydown', onKeyDown, true)
         overlay.remove()
         overlay = null
         sel = { anchor: null, current: null, rows: [] }
@@ -247,16 +393,33 @@ window.__ModuleLoader__.load({
         '<div class="rs-panel">' +
         '<div class="rs-head"><span class="rs-title"></span><span class="rs-meta"></span>' +
         '<button class="rs-close" title="关闭">✕</button></div>' +
+        '<div class="rs-search">' +
+        '<input type="text" placeholder="查找（Ctrl+F）" spellcheck="false">' +
+        '<span class="rs-count"></span>' +
+        '<button class="rs-nav" data-fr-prev title="上一个（Shift+Enter）">↑</button>' +
+        '<button class="rs-nav" data-fr-next title="下一个（Enter）">↓</button>' +
+        '<button class="rs-close" title="关闭搜索">✕</button>' +
+        '</div>' +
         '<div class="rs-body"></div>' +
-        '<div class="rs-foot"><span class="rs-hint">点击行号选行，Shift 点击 / 拖拽连选</span>' +
+        '<div class="rs-foot"><span class="rs-hint">点击行号选行，Shift 点击 / 拖拽连选 · Ctrl+F 搜索</span>' +
         '<button class="rs-cancel">取消</button><button class="rs-ok" disabled>插入 line 引用</button></div>' +
         '</div>'
       const title = mask.querySelector('.rs-title')
       const meta = mask.querySelector('.rs-meta')
       const body = mask.querySelector('.rs-body')
-      const closeBtn = mask.querySelector('.rs-close')
+      const closeBtn = mask.querySelector('.rs-head .rs-close')
       const cancelBtn = mask.querySelector('.rs-cancel')
       const okBtn = mask.querySelector('.rs-ok')
+      const searchBar = mask.querySelector('.rs-search')
+      search.input = searchBar.querySelector('input')
+      search.countEl = searchBar.querySelector('.rs-count')
+      searchBar.querySelector('[data-fr-prev]').onclick = function () { jumpToMatch(-1) }
+      searchBar.querySelector('[data-fr-next]').onclick = function () { jumpToMatch(1) }
+      searchBar.querySelector('.rs-close').onclick = closeSearch
+      search.input.addEventListener('input', function () {
+        clearTimeout(searchTimer)
+        searchTimer = setTimeout(runSearch, 120)
+      })
       title.textContent = '@' + path
       meta.textContent = '读取中…'
       mask.addEventListener('mousedown', function (e) {
@@ -275,6 +438,7 @@ window.__ModuleLoader__.load({
       overlay = mask
       body.addEventListener('mousedown', onOverlayDown)
       document.addEventListener('mousemove', onDocMove, true)
+      document.addEventListener('mouseup', onDocUp, true)
       document.addEventListener('keydown', onKeyDown, true)
 
       fetch(READ_API + '?path=' + encodeURIComponent(path))
@@ -301,6 +465,7 @@ window.__ModuleLoader__.load({
             rows.push(row)
           })
           sel.rows = rows
+          search.rows = rows
         })
         .catch(function (err) {
           meta.textContent = '读取失败: ' + String((err && err.message) || err)
@@ -405,6 +570,7 @@ window.__ModuleLoader__.load({
         closeOverlay()
         document.removeEventListener('click', onDocClick, true)
         document.removeEventListener('mousemove', onDocMove, true)
+        document.removeEventListener('mouseup', onDocUp, true)
         document.removeEventListener('keydown', onKeyDown, true)
       }
     }
