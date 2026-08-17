@@ -45,7 +45,16 @@ window.__ModuleLoader__.load({
         fetchFiles('', null).catch(function () {})
       },
       onPick({ candidate }) {
-        return { text: '@' + candidate._path + ' ' }
+        // 返回 reference（走 slash/input-insert-reference → chip 化），
+        // 而不是 text（纯文本）。chip 才有独立的 DOM 可点击/加样式。
+        return {
+          insert: {
+            source: 'file',
+            ref: candidate._path,
+            label: '@' + candidate._path,
+            clipboardText: '@' + candidate._path,
+          },
+        }
       },
       codec: {
         clipboardText: (ref) => '@' + ref,
