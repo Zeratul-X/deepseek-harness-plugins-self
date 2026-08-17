@@ -2,14 +2,20 @@
 // 1) registers the '@' file reference source into the input-trigger pipeline —
 //    typing @ in the composer opens a workspace file picker (fuzzy substring
 //    filter), picking one inserts '@relative/path'.
-// 2) clicking the '@path' chip in the composer opens a file preview overlay
-//    with line selection; confirming rewrites the chip into
+// 2) a reference dock above the composer lists every pending '@file' reference
+//    with its FULL path (the in-composer chip keeps only a marker dot, since
+//    the official chip label gets clipped inside the input), opens the code
+//    preview overlay on click, and removes the reference via the ✕ button.
+// 3) clicking the '@path' chip in the composer (or a dock entry) opens a file
+//    preview overlay with line selection; confirming rewrites the chip into
 //    '@relative/path line <a>-<b>' in the draft.
 window.__ModuleLoader__.load({
   id: 'harness-file-ref',
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports
+
+    const react = require('react')
 
     const API = '/__file-ref/api/search'
     const READ_API = '/__file-ref/api/read'
@@ -62,13 +68,22 @@ window.__ModuleLoader__.load({
       }
     }
 
-    // ---------- chip → preview → line-range rewrite ----------
+    // ---------- reference dock + chip → preview → line-range rewrite ----------
 
     const CSS = [
-      // @文件引用 chip：背景色块 + padding 上下 4px 左右 12px；
-      // backdrop 装饰层默认 pointer-events:none（点击穿透到输入框），这里恢复点击
-      '[data-decoration="chip"]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);padding:4px 12px;border-radius:6px;pointer-events:auto;cursor:pointer}',
-      '[data-decoration="chip"]:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 20%,transparent)}',
+      // @文件引用 chip：输入框内正常显示路径文本（修正官方 chipLabel 的
+      // 缩放裁剪），超宽省略；完整路径在引用 dock 与 hover title。
+      '[data-decoration="chip"]{pointer-events:auto!important;cursor:pointer}',
+      '[data-decoration="chip"][title^="@"]{display:inline-flex!important;align-items:center;max-width:100%;background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);padding:1px 8px!important;border-radius:6px}',
+      '[data-decoration="chip"][title^="@"]:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 20%,transparent)}',
+      '[data-decoration="chip"][title^="@"] [class*="chipLabel"]{position:static!important;display:block!important;width:auto!important;max-width:100%;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;transform:none!important;font-size:13px!important;line-height:20px!important}',
+      // 引用 dock：输入框上方，完整路径，点击弹代码预览，✕ 移除引用
+      '.fr-dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));max-width:calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));margin:0 auto 6px;padding:0 var(--dsh-composer-dock-inset);display:flex;flex-wrap:wrap;align-items:center;gap:6px}',
+      '.fr-ref{display:inline-flex;align-items:center;gap:4px;max-width:100%;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);border-radius:6px;padding:2px 8px;font-size:12px;line-height:20px;cursor:pointer;font-family:Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.fr-ref:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 14%,transparent);color:var(--dsw-alias-label-primary)}',
+      '.fr-x{border:none;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:0 3px;font-size:12px;line-height:16px;border-radius:4px;flex:none}',
+      '.fr-x:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
+      // 预览浮层
       '.rs-mask{position:fixed;inset:0;z-index:99999;background:var(--dsw-alias-bg-mask-2);display:flex;align-items:center;justify-content:center}',
       '.rs-panel{width:min(720px,92vw);max-height:min(560px,86vh);display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);overflow:hidden}',
       '.rs-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--dsw-alias-border-l1)}',
@@ -216,11 +231,16 @@ window.__ModuleLoader__.load({
       if (e.key === 'Escape') closeOverlay()
     }
 
-    function openPreview() {
-      if (!chipEl) return
-      const label = chipLabel(chipEl)
-      const path = String(label || '').replace(/^@/, '')
+    /** Open the preview overlay for one workspace-relative path (dock chip or in-composer chip). */
+    function openPreviewForPath(path, target) {
       if (!path) return
+      if (target) chipEl = target
+      if (overlay) {
+        // 替换旧浮层但保留 chipEl（line 引用插入的目标占位符）
+        overlay.remove()
+        overlay = null
+        sel = { anchor: null, current: null, rows: [] }
+      }
       const mask = document.createElement('div')
       mask.className = 'rs-mask'
       mask.innerHTML =
@@ -287,6 +307,71 @@ window.__ModuleLoader__.load({
         })
     }
 
+    /** In-composer chip click entry: read the chip label, open the overlay. */
+    function openPreview() {
+      if (!chipEl) return
+      const label = chipLabel(chipEl)
+      const path = String(label || '').replace(/^@/, '')
+      openPreviewForPath(path, chipEl)
+    }
+
+    /** Remove one '@file' occurrence from the draft by deleting its placeholder char. */
+    function removeRef(occurrenceId, scope) {
+      const root = scope || document
+      const chip = root.querySelector('[data-decoration="chip"][data-occurrence="' + occurrenceId + '"]')
+      if (!chip) return
+      const off = chipOffset(chip)
+      const backdrop = chip.closest('[data-input-backdrop]')
+      const ta = backdrop && backdrop.parentElement
+        ? backdrop.parentElement.querySelector('textarea')
+        : document.querySelector('textarea[data-phase]')
+      if (!ta || off < 0) return
+      const value = ta.value
+      if (value[off] !== '\uFFFC') return
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
+      setter.call(ta, value.slice(0, off) + value.slice(off + 1))
+      ta.dispatchEvent(new Event('input', { bubbles: true }))
+      ta.focus()
+    }
+
+    /** The reference dock: full-path chips above the composer, one per pending '@file'. */
+    function FileRefDock(props) {
+      const input = props.input
+      const refs = (input && input.occurrences || []).filter(function (o) { return o.source === 'file' })
+      if (refs.length === 0) return null
+      const items = refs.map(function (occ) {
+        const label = occ.label || '@' + (occ.ref || '')
+        const path = String(label).replace(/^@/, '')
+        return react.createElement(
+          'span',
+          {
+            key: occ.occurrenceId,
+            className: 'fr-ref',
+            title: label,
+            onClick: function (e) {
+              const seat = e.currentTarget.closest('[data-composer-seat]')
+              const chip = seat
+                ? seat.querySelector('[data-decoration="chip"][data-occurrence="' + occ.occurrenceId + '"]')
+                : null
+              openPreviewForPath(path, chip)
+            }
+          },
+          label,
+          react.createElement('button', {
+            type: 'button',
+            className: 'fr-x',
+            title: '移除引用',
+            onClick: function (e) {
+              e.stopPropagation()
+              const seat = e.currentTarget.closest('[data-composer-seat]')
+              removeRef(occ.occurrenceId, seat || document)
+            }
+          }, '✕')
+        )
+      })
+      return react.createElement('div', { className: 'fr-dock', 'data-fr-dock': true }, items)
+    }
+
     function onDocClick(e) {
       const el = e.target && e.target.closest ? e.target.closest('[data-decoration="chip"]') : null
       if (!el) return
@@ -296,6 +381,18 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
+      const slots = ctx.get('slots')
+      if (slots !== undefined) {
+        ctx.effect(function () {
+          return slots.inject('conversation.input.dock', function () {
+            return slots.register({
+              name: 'conversation.input.dock',
+              id: 'file-refs',
+              order: 1
+            }, FileRefDock)
+          })
+        }, 'harness-file-ref: reference dock')
+      }
       const inputTriggers = ctx.get('inputTriggers')
       if (inputTriggers === undefined) {
         console.error('[harness-file-ref] inputTriggers service unavailable')
@@ -314,7 +411,7 @@ window.__ModuleLoader__.load({
 
     exports.source = source
     exports.apply = apply
-    exports.inject = ['inputTriggers']
+    exports.inject = ['inputTriggers', 'slots']
     return module.exports
   }
 })
