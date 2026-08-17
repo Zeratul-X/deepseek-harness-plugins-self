@@ -12,12 +12,11 @@ $patchFile = Join-Path $dshHome 'cordis.patch.yml'
 
 # 插件目录名 -> npm 包名
 $map = @{
-  'pet'        = 'harness-pet'
-  'term'       = 'harness-term'
-  'diffs'      = 'harness-diffs'
-  'vord'       = 'harness-vord'
-  'file-ref'   = 'harness-file-ref'
-  'codeselect' = 'harness-codeselect'
+  'pet'      = 'harness-pet'
+  'term'     = 'harness-term'
+  'diffs'    = 'harness-diffs'
+  'vord'     = 'harness-vord'
+  'file-ref' = 'harness-file-ref'
 }
 
 Write-Host '==> 1/3 复制插件源码到 ~/.dsh/plugins'
