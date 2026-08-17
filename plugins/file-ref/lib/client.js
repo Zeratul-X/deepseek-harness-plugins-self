@@ -56,6 +56,10 @@ window.__ModuleLoader__.load({
     // ---------- chip → preview → line-range rewrite ----------
 
     const CSS = [
+      // @文件引用 chip：背景色块 + padding 上下 4px 左右 12px；
+      // backdrop 装饰层默认 pointer-events:none（点击穿透到输入框），这里恢复点击
+      '[data-decoration="chip"]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);padding:4px 12px;border-radius:6px;pointer-events:auto;cursor:pointer}',
+      '[data-decoration="chip"]:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 20%,transparent)}',
       '.rs-mask{position:fixed;inset:0;z-index:99999;background:var(--dsw-alias-bg-mask-2);display:flex;align-items:center;justify-content:center}',
       '.rs-panel{width:min(720px,92vw);max-height:min(560px,86vh);display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);overflow:hidden}',
       '.rs-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--dsw-alias-border-l1)}',
