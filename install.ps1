@@ -1,4 +1,4 @@
-# dsh-harness-plugins 一键安装脚本
+﻿# dsh-harness-plugins 一键安装脚本
 # 用法: powershell -ExecutionPolicy Bypass -File .\install.ps1
 # 安装后请重启 DeepSeek Harness 生效。
 
@@ -12,11 +12,12 @@ $patchFile = Join-Path $dshHome 'cordis.patch.yml'
 
 # 插件目录名 -> npm 包名
 $map = @{
-  'pet'      = 'harness-pet'
-  'term'     = 'harness-term'
-  'diffs'    = 'harness-diffs'
-  'vord'     = 'harness-vord'
-  'file-ref' = 'harness-file-ref'
+  'pet'        = 'harness-pet'
+  'term'       = 'harness-term'
+  'diffs'      = 'harness-diffs'
+  'vord'       = 'harness-vord'
+  'file-ref'   = 'harness-file-ref'
+  'codeselect' = 'harness-codeselect'
 }
 
 Write-Host '==> 1/3 复制插件源码到 ~/.dsh/plugins'
@@ -48,30 +49,24 @@ foreach ($name in $map.Keys) {
 }
 
 Write-Host '==> 3/3 注册插件到 cordis.patch.yml'
-$block = @'
-
-# ── harness plugins (client plugins, ~/.dsh/plugins/*) ─────────────
-- insert:
-    - id: harness-pet
-      name: harness-pet
-    - id: harness-term
-      name: harness-term
-    - id: harness-diffs
-      name: harness-diffs
-    - id: harness-vord
-      name: harness-vord
-    - id: harness-file-ref
-      name: harness-file-ref
-'@
 if (-not (Test-Path $patchFile)) {
   New-Item -ItemType File -Path $patchFile -Force | Out-Null
 }
 $content = Get-Content $patchFile -Raw -ErrorAction SilentlyContinue
-if ($content -match 'harness-pet') {
-  Write-Host '  - 已注册, 跳过'
+# 逐插件检查注册，只追加缺失的条目（整块跳过会漏掉新增插件）
+$pending = @()
+foreach ($name in $map.Keys) {
+  $pkg = $map[$name]
+  if ($content -notmatch [regex]::Escape("- id: $pkg")) {
+    $pending += "    - id: $pkg`n      name: $pkg"
+  }
+}
+if ($pending.Count -gt 0) {
+  $addBlock = "`n# ── harness plugins (client plugins, ~/.dsh/plugins/*) ──────────────────────`n- insert:`n" + ($pending -join "`n") + "`n"
+  Add-Content -Path $patchFile -Value $addBlock -Encoding UTF8
+  Write-Host "  - 已追加 $($pending.Count) 个注册条目: $($pending -join ', ')"
 } else {
-  Add-Content -Path $patchFile -Value $block -Encoding UTF8
-  Write-Host '  - 已追加注册块'
+  Write-Host '  - 全部已注册, 跳过'
 }
 
 Write-Host ''
