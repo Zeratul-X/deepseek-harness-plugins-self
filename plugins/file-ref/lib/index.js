@@ -1,7 +1,8 @@
 // harness-file-ref host half: workspace file search for the '@' file picker.
 // Serves GET /__file-ref/api/search?q=<query> — a bounded recursive walk of
 // every registered workspace, cached per workspace for 10s. Read-only.
-import { readdir } from 'node:fs/promises'
+// Also GET /__file-ref/api/read?path=<rel> — reads one workspace file (bounded).
+import { open, readdir, stat } from 'node:fs/promises'
 import { relative, resolve, sep } from 'node:path'
 
 export const inject = ['webServer']
@@ -12,6 +13,8 @@ const MAX_FILES = 20000
 const MAX_DEPTH = 10
 const CACHE_MS = 10_000
 const RESULT_LIMIT = 50
+const MAX_READ_BYTES = 512 * 1024
+const MAX_READ_LINES = 3000
 
 /** Per-workspace index cache: root -> { promise, builtAt }. */
 const indexCache = new Map()
@@ -96,10 +99,59 @@ async function handleSearch(ctx, rawUrl, res) {
   }
 }
 
+/** Read one workspace file by relative path (bounded size/lines); path must stay inside a registered workspace. */
+async function handleRead(ctx, rawUrl, res) {
+  const url = new URL(rawUrl, 'http://x')
+  const rel = (url.searchParams.get('path') ?? '').replace(/^\/+/, '')
+  if (rel === '' || rel.includes('\0')) {
+    sendJson(res, 200, { ok: false, error: 'empty path' })
+    return
+  }
+  const registry = ctx.get('workspaceRegistry')
+  if (registry === undefined) {
+    sendJson(res, 200, { ok: false, error: 'no workspace registry' })
+    return
+  }
+  for (const workspace of registry.list()) {
+    const abs = resolve(workspace.path, rel)
+    if (abs !== resolve(workspace.path) && !abs.startsWith(resolve(workspace.path) + sep)) continue
+    let info
+    try {
+      info = await stat(abs)
+    } catch {
+      continue
+    }
+    if (!info.isFile()) continue
+    try {
+      const size = Math.min(info.size, MAX_READ_BYTES)
+      const fh = await open(abs, 'r')
+      const buf = Buffer.alloc(size)
+      await fh.read(buf, 0, size, 0)
+      await fh.close()
+      const text = buf.toString('utf8')
+      const lines = text.split('\n')
+      const capped = lines.length > MAX_READ_LINES ? lines.slice(0, MAX_READ_LINES) : lines
+      sendJson(res, 200, {
+        ok: true,
+        path: rel,
+        workspace: workspace.title,
+        lines: capped,
+        truncated: lines.length > MAX_READ_LINES || info.size > MAX_READ_BYTES,
+      })
+      return
+    } catch (error) {
+      sendJson(res, 200, { ok: false, error: error instanceof Error ? error.message : String(error) })
+      return
+    }
+  }
+  sendJson(res, 200, { ok: false, error: 'file not found in any workspace' })
+}
+
 async function handle(ctx, req, res) {
   const pathname = new URL(req.url ?? '/', 'http://x').pathname
   const rest = pathname.slice(PREFIX.length)
   if (rest === '/api/search') return handleSearch(ctx, req.url ?? '/', res)
+  if (rest === '/api/read') return handleRead(ctx, req.url ?? '/', res)
   sendJson(res, 404, { ok: false, error: 'unknown file-ref route' })
 }
 
