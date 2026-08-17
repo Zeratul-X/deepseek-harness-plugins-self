@@ -27,6 +27,8 @@ window.__ModuleLoader__.load({
     const HUNGRY_AT = 10
     const MIN_SCALE = 0.3
     const MAX_SCALE = 1
+    // 饱食度消耗速率：100 点 8 小时消耗完 → 每秒 100/(8*3600) ≈ 0.00347 点
+    const HUNGER_PER_SEC = 100 / (8 * 3600)
 
     function viewportSize() {
       try {
@@ -75,7 +77,7 @@ window.__ModuleLoader__.load({
           if (raw) {
             const s = JSON.parse(raw)
             if (typeof s.value === 'number' && typeof s.ts === 'number') {
-              return Math.max(0, Math.min(100, s.value - ((Date.now() - s.ts) / 1000) * 0.06))
+              return Math.max(0, Math.min(100, s.value - ((Date.now() - s.ts) / 1000) * HUNGER_PER_SEC))
             }
           }
         } catch (e) {}
@@ -138,7 +140,7 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         const d = timer.interval(() => {
           setHunger((h) => {
-            const n = Math.max(0, h - 0.3)
+            const n = Math.max(0, h - HUNGER_PER_SEC * 5)
             if (n !== h) {
               try {
                 localStorage.setItem(HUNGER_KEY, JSON.stringify({ value: n, ts: Date.now() }))
@@ -231,10 +233,10 @@ window.__ModuleLoader__.load({
             2: { dx: -4, dy: 0, scale: 0.3, opacity: 0 },
           }[eating.stage]
         : null
-      const hungerBar = React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11, color: '#888' } },
+      const hungerBar = React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11, color: 'var(--dsw-alias-label-tertiary)' } },
         React.createElement('span', null, '饱食度'),
-        React.createElement('div', { style: { flex: 1, height: 6, borderRadius: 3, background: '#eee', overflow: 'hidden' } },
-          React.createElement('div', { style: { height: '100%', width: hunger + '%', background: hunger <= HUNGRY_AT ? '#e74c3c' : hunger < 55 ? '#e67e22' : '#27ae60', transition: 'width .4s' } }),
+        React.createElement('div', { style: { flex: 1, height: 6, borderRadius: 3, background: 'var(--dsw-alias-bg-module-platform)', overflow: 'hidden' } },
+          React.createElement('div', { style: { height: '100%', width: hunger + '%', background: hunger <= HUNGRY_AT ? 'var(--dsw-alias-state-error-primary)' : hunger < 55 ? 'var(--dsw-alias-state-warn-primary)' : 'var(--dsw-alias-state-success-primary)', transition: 'width .4s' } }),
         ),
         React.createElement('span', { style: { fontVariantNumeric: 'tabular-nums' } }, Math.round(hunger)),
       )
@@ -251,11 +253,11 @@ window.__ModuleLoader__.load({
         menu ? React.createElement('div', {
           style: {
             position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', width: 170,
-            background: '#fff', border: '1px solid #e5e5e5', borderRadius: 12, boxShadow: '0 6px 24px rgba(0,0,0,.14)',
-            padding: 10, marginBottom: 8, fontSize: 13, color: '#333',
+            background: 'var(--dsw-specific-menu)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 12, boxShadow: '0 6px 24px rgba(0,0,0,.14)',
+            padding: 10, marginBottom: 8, fontSize: 13, color: 'var(--dsw-alias-label-primary)',
           },
         },
-          React.createElement('div', { style: { fontSize: 12, color: '#666', marginBottom: 6 } }, hunger <= HUNGRY_AT ? '我饿了…' : '汪？想吃点啥？'),
+          React.createElement('div', { style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)', marginBottom: 6 } }, hunger <= HUNGRY_AT ? '我饿了…' : '汪？想吃点啥？'),
           React.createElement('button', { onClick: () => feed('🍖', 25), style: { display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', border: 'none', background: 'none', padding: '5px 6px', borderRadius: 6, fontSize: 13 } }, '🍖 喂肉骨头（+25）'),
           React.createElement('button', { onClick: () => feed('🥛', 20), style: { display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', border: 'none', background: 'none', padding: '5px 6px', borderRadius: 6, fontSize: 13 } }, '🥛 喂牛奶（+20）'),
           React.createElement('button', { onClick: pet, style: { display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', border: 'none', background: 'none', padding: '5px 6px', borderRadius: 6, fontSize: 13 } }, '💕 摸摸头'),
@@ -264,8 +266,8 @@ window.__ModuleLoader__.load({
         bubble ? React.createElement('div', {
           style: {
             position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap',
-            background: '#fff', border: '1px solid #eee', borderRadius: 10, boxShadow: '0 3px 12px rgba(0,0,0,.1)',
-            padding: '5px 10px', marginBottom: 6, fontSize: 12, color: '#444',
+            background: 'var(--dsw-specific-menu)', border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 10, boxShadow: '0 3px 12px rgba(0,0,0,.1)',
+            padding: '5px 10px', marginBottom: 6, fontSize: 12, color: 'var(--dsw-alias-label-primary)',
           },
         }, bubble.text) : null,
         React.createElement('div', { 'data-pet-body': 'true', style: { position: 'relative', width: FW, height: FH, cursor: dragRef.current ? 'grabbing' : 'grab' } },

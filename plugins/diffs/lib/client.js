@@ -97,24 +97,24 @@ window.__ModuleLoader__.load({
         load()
       }, [load])
       const branch = git.phase === 'done' && git.data && git.data.branch ? git.data.branch : null
-      const header = React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid #eee' } },
+      const header = React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--dsw-alias-border-l1)' } },
         React.createElement('strong', { style: { fontSize: 13 } }, 'Git 工作区'),
-        branch === null ? null : React.createElement('span', { style: { fontSize: 11, padding: '1px 8px', borderRadius: 10, background: '#eaf2f8', color: '#2471a3', fontWeight: 600, whiteSpace: 'nowrap' } },
+        branch === null ? null : React.createElement('span', { style: { fontSize: 11, padding: '1px 8px', borderRadius: 10, background: 'color-mix(in srgb, var(--dsw-alias-state-business-primary) 14%, transparent)', color: 'var(--dsw-alias-state-business-primary)', fontWeight: 600, whiteSpace: 'nowrap' } },
           '分支 ' + branch),
-        React.createElement('span', { style: { fontSize: 11, color: git.phase === 'loading' ? '#999' : git.phase === 'error' ? '#c0392b' : git.data && git.data.clean ? '#27ae60' : '#e67e22' } },
+        React.createElement('span', { style: { fontSize: 11, color: git.phase === 'loading' ? 'var(--dsw-alias-label-tertiary)' : git.phase === 'error' ? 'var(--dsw-alias-state-error-primary)' : git.data && git.data.clean ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-warn-primary)' } },
           git.phase === 'loading' ? '读取中…'
             : git.phase === 'error' ? '读取失败'
               : git.data.clean ? '✓ 工作区干净，无改动' : '有 ' + git.data.entries.length + ' 个文件改动'),
         React.createElement('button', {
-          style: { marginLeft: 'auto', fontSize: 11, padding: '2px 8px', cursor: 'pointer', border: '1px solid #ddd', borderRadius: 4, background: '#fff' },
+          style: { marginLeft: 'auto', fontSize: 11, padding: '2px 8px', cursor: 'pointer', border: '1px solid var(--dsw-alias-border-l3)', borderRadius: 4, background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-secondary)' },
           onClick: load,
         }, '刷新'),
       )
       const body = []
       if (git.phase === 'loading') {
-        body.push(React.createElement('div', { key: 'l', style: { padding: '12px 16px', color: '#999', fontSize: 12 } }, '正在读取 git 状态…'))
+        body.push(React.createElement('div', { key: 'l', style: { padding: '12px 16px', color: 'var(--dsw-alias-label-tertiary)', fontSize: 12 } }, '正在读取 git 状态…'))
       } else if (git.phase === 'error') {
-        body.push(React.createElement('div', { key: 'e', style: { padding: '12px 16px', color: '#c0392b', fontSize: 12, fontFamily: 'monospace' } }, git.message))
+        body.push(React.createElement('div', { key: 'e', style: { padding: '12px 16px', color: 'var(--dsw-alias-state-error-primary)', fontSize: 12, fontFamily: 'monospace' } }, git.message))
       } else if (!git.data.clean && git.data.entries.length > 0) {
         for (const entry of git.data.entries) {
           const isOpen = open[entry.path] === true
@@ -122,19 +122,19 @@ window.__ModuleLoader__.load({
           const badge = React.createElement('span', {
             style: { fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 3, color: '#fff', background: stateColor[entry.state] || '#7f8c8d', fontFamily: 'monospace' },
           }, entry.state)
-          body.push(React.createElement('div', { key: entry.path, style: { borderBottom: '1px solid #f0f0f0' } },
+          body.push(React.createElement('div', { key: entry.path, style: { borderBottom: '1px solid var(--dsw-alias-border-l1)' } },
             React.createElement('div', {
               style: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', cursor: 'pointer' },
               onClick: () => setOpen((prev) => ({ ...prev, [entry.path]: !isOpen })),
             },
-              React.createElement('span', { style: { color: '#666', fontSize: 11, width: 12 } }, isOpen ? '▾' : '▸'),
+              React.createElement('span', { style: { color: 'var(--dsw-alias-label-secondary)', fontSize: 11, width: 12 } }, isOpen ? '▾' : '▸'),
               badge,
-              React.createElement('span', { style: { fontSize: 12, fontFamily: 'monospace', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, entry.path),
+              React.createElement('span', { style: { fontSize: 12, fontFamily: 'monospace', color: 'var(--dsw-alias-label-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, entry.path),
               entry.lines && entry.lines.length > 0
                 ? React.createElement('span', { style: { fontSize: 11, fontFamily: 'monospace', whiteSpace: 'nowrap', marginLeft: 'auto' } },
-                    React.createElement('span', { style: { color: '#1e8449' } }, '+' + stats.add),
+                    React.createElement('span', { style: { color: 'var(--dsw-alias-state-success-primary)' } }, '+' + stats.add),
                     ' ',
-                    React.createElement('span', { style: { color: '#c0392b' } }, '−' + stats.del),
+                    React.createElement('span', { style: { color: 'var(--dsw-alias-state-error-primary)' } }, '−' + stats.del),
                   )
                 : null,
             ),
@@ -143,17 +143,17 @@ window.__ModuleLoader__.load({
                   entry.lines.map((ln, idx) => React.createElement('div', {
                     key: idx,
                     style: ln.t === 'del'
-                      ? { background: '#fdecea', color: '#c0392b', padding: '0 4px', whiteSpace: 'pre' }
+                      ? { background: 'color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent)', color: 'var(--dsw-alias-state-error-primary)', padding: '0 4px', whiteSpace: 'pre' }
                       : ln.t === 'add'
-                        ? { background: '#eafaf1', color: '#1e8449', padding: '0 4px', whiteSpace: 'pre' }
-                        : { color: '#666', padding: '0 4px', whiteSpace: 'pre' },
+                        ? { background: 'color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent)', color: 'var(--dsw-alias-state-success-primary)', padding: '0 4px', whiteSpace: 'pre' }
+                        : { color: 'var(--dsw-alias-label-secondary)', padding: '0 4px', whiteSpace: 'pre' },
                   }, (ln.t === 'del' ? '- ' : ln.t === 'add' ? '+ ' : '  ') + ln.text)),
                 )
               : null,
           ))
         }
       }
-      return React.createElement('div', { style: { border: '1px solid #e5e5e5', borderRadius: 6, margin: 8, background: '#fff', overflow: 'hidden' } },
+      return React.createElement('div', { style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 6, margin: 8, background: 'var(--dsw-alias-bg-layer-1)', overflow: 'hidden' } },
         header,
         ...body,
       )
@@ -180,45 +180,45 @@ window.__ModuleLoader__.load({
       items.push(React.createElement(GitSection, { key: 'git', sessionId: props.sessionId }))
       items.push(React.createElement('div', { key: 'sess-head', style: { padding: '10px 12px 4px', fontSize: 13, fontWeight: 700 } },
         '会话改动',
-        React.createElement('span', { style: { fontWeight: 400, fontSize: 11, color: '#999', marginLeft: 6 } }, entries.length + ' 条'),
+        React.createElement('span', { style: { fontWeight: 400, fontSize: 11, color: 'var(--dsw-alias-label-tertiary)', marginLeft: 6 } }, entries.length + ' 条'),
       ))
       if (entries.length === 0) {
-        items.push(React.createElement('div', { key: 'empty', style: { padding: '4px 12px 12px', color: '#888', fontSize: 12 } }, '本会话暂无文件改动'))
+        items.push(React.createElement('div', { key: 'empty', style: { padding: '4px 12px 12px', color: 'var(--dsw-alias-label-tertiary)', fontSize: 12 } }, '本会话暂无文件改动'))
       }
       for (const entry of entries) {
         const isOpen = open[entry.key] === true
         const header = React.createElement(
           'div',
           {
-            style: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #eee', background: '#fafafa' },
+            style: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-module-platform)' },
             onClick: () => setOpen((prev) => ({ ...prev, [entry.key]: !isOpen })),
           },
-          React.createElement('span', { style: { color: '#666', fontSize: 11, width: 12 } }, isOpen ? '▾' : '▸'),
+          React.createElement('span', { style: { color: 'var(--dsw-alias-label-secondary)', fontSize: 11, width: 12 } }, isOpen ? '▾' : '▸'),
           React.createElement('strong', { style: { fontSize: 12 } }, titleCase(entry.name)),
-          React.createElement('span', { style: { color: '#999', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, entry.diffs[0] ? entry.diffs[0].path : ''),
-          entry.running ? React.createElement('span', { style: { color: '#e67e22', fontSize: 11 } }, '运行中') : null,
-          React.createElement('span', { style: { color: '#bbb', fontSize: 11, marginLeft: 'auto', whiteSpace: 'nowrap' } }, fmtTime(entry.time)),
+          React.createElement('span', { style: { color: 'var(--dsw-alias-label-tertiary)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, entry.diffs[0] ? entry.diffs[0].path : ''),
+          entry.running ? React.createElement('span', { style: { color: 'var(--dsw-alias-state-warn-primary)', fontSize: 11 } }, '运行中') : null,
+          React.createElement('span', { style: { color: 'var(--dsw-alias-label-caption)', fontSize: 11, marginLeft: 'auto', whiteSpace: 'nowrap' } }, fmtTime(entry.time)),
         )
         const body = []
         if (isOpen) {
           for (const diff of entry.diffs) {
             const lines = lineDiff(diff.oldText, diff.newText)
             body.push(React.createElement('div', { key: 'f' + diff.path, style: { padding: '2px 12px 8px' } },
-              React.createElement('div', { style: { fontSize: 11, color: '#555', fontFamily: 'monospace', padding: '4px 0' } }, diff.path),
+              React.createElement('div', { style: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)', fontFamily: 'monospace', padding: '4px 0' } }, diff.path),
               React.createElement('div', { style: { fontFamily: 'monospace', fontSize: 12, lineHeight: 1.55, overflowX: 'auto' } },
                 lines.map((ln, idx) => React.createElement('div', {
                   key: idx,
                   style: ln.t === 'del'
-                    ? { background: '#fdecea', color: '#c0392b', padding: '0 4px', whiteSpace: 'pre' }
+                    ? { background: 'color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent)', color: 'var(--dsw-alias-state-error-primary)', padding: '0 4px', whiteSpace: 'pre' }
                     : ln.t === 'add'
-                      ? { background: '#eafaf1', color: '#1e8449', padding: '0 4px', whiteSpace: 'pre' }
-                      : { color: '#666', padding: '0 4px', whiteSpace: 'pre' },
+                      ? { background: 'color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent)', color: 'var(--dsw-alias-state-success-primary)', padding: '0 4px', whiteSpace: 'pre' }
+                      : { color: 'var(--dsw-alias-label-secondary)', padding: '0 4px', whiteSpace: 'pre' },
                 }, (ln.t === 'del' ? '- ' : ln.t === 'add' ? '+ ' : '  ') + ln.text)),
               ),
             ))
           }
         }
-        items.push(React.createElement('div', { key: entry.key, style: { border: '1px solid #e5e5e5', borderRadius: 6, margin: 8, overflow: 'hidden', background: '#fff' } },
+        items.push(React.createElement('div', { key: entry.key, style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 6, margin: 8, overflow: 'hidden', background: 'var(--dsw-alias-bg-layer-1)' } },
           header,
           ...(isOpen ? body : []),
         ))

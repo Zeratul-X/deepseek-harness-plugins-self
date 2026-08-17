@@ -133,8 +133,8 @@ window.__ModuleLoader__.load({
           style: {
             display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px 3px 12px', borderRadius: 6,
             cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap',
-            background: isActive ? '#2d2d2d' : 'transparent', color: isActive ? '#fff' : '#999',
-            border: '1px solid ' + (isActive ? '#555' : 'transparent'),
+            background: isActive ? 'var(--dsw-alias-bg-layer-3)' : 'transparent', color: isActive ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-tertiary)',
+            border: '1px solid ' + (isActive ? 'var(--dsw-alias-border-l4)' : 'transparent'),
           },
           onClick: () => {
             state.activeId = i.id
@@ -143,7 +143,7 @@ window.__ModuleLoader__.load({
         },
           React.createElement('span', null, i.name),
           React.createElement('span', {
-            style: { cursor: 'pointer', color: '#777', padding: '0 2px', fontSize: 11 },
+            style: { cursor: 'pointer', color: 'var(--dsw-alias-label-secondary)', padding: '0 2px', fontSize: 11 },
             onClick: (e) => {
               e.stopPropagation()
               const idx = state.instances.indexOf(i)
@@ -169,26 +169,26 @@ window.__ModuleLoader__.load({
           lines.push(React.createElement('div', { key: 'p', style: { color: '#4ec9b0', whiteSpace: 'pre-wrap', wordBreak: 'break-all' } },
             'PS ' + (inst.cwd || '') + '> ' + item.command))
           if (item.error) {
-            lines.push(React.createElement('div', { key: 'e', style: { color: '#f48771', whiteSpace: 'pre-wrap', wordBreak: 'break-all' } }, item.error))
+            lines.push(React.createElement('div', { key: 'e', style: { color: 'var(--dsw-alias-state-error-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' } }, item.error))
           } else {
             if (item.stdout && item.stdout.length > 0) {
-              lines.push(React.createElement('div', { key: 'o', style: { color: '#d4d4d4', whiteSpace: 'pre-wrap', wordBreak: 'break-all' } }, stripAnsi(item.stdout)))
+              lines.push(React.createElement('div', { key: 'o', style: { color: 'var(--dsw-alias-label-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' } }, stripAnsi(item.stdout)))
             }
             if (item.stderr && item.stderr.length > 0) {
-              lines.push(React.createElement('div', { key: 'r', style: { color: '#f48771', whiteSpace: 'pre-wrap', wordBreak: 'break-all' } }, stripAnsi(item.stderr)))
+              lines.push(React.createElement('div', { key: 'r', style: { color: 'var(--dsw-alias-state-error-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' } }, stripAnsi(item.stderr)))
             }
             if (item.running) {
-              lines.push(React.createElement('div', { key: 'run', style: { color: '#e5c07b', fontSize: 11 } }, '运行中…'))
+              lines.push(React.createElement('div', { key: 'run', style: { color: 'var(--dsw-alias-state-warn-primary)', fontSize: 11 } }, '运行中…'))
             } else {
-              lines.push(React.createElement('div', { key: 'c', style: { color: item.code === 0 ? '#6a9955' : '#f48771', fontSize: 11, marginTop: 2 } },
+              lines.push(React.createElement('div', { key: 'c', style: { color: item.code === 0 ? 'var(--dsw-alias-state-success-secondary)' : 'var(--dsw-alias-state-error-secondary)', fontSize: 11, marginTop: 2 } },
                 '退出码 ' + (item.timedOut ? '超时终止' : item.code)))
             }
           }
           blocks.push(React.createElement('div', { key: item.id, style: { marginBottom: 10 } }, ...lines))
         }
       }
-      return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', background: '#1e1e1e', color: '#d4d4d4', fontFamily: 'Consolas, monospace', fontSize: 12 } },
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderBottom: '1px solid #333', overflowX: 'auto' } },
+      return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)', fontFamily: 'Consolas, monospace', fontSize: 12 } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderBottom: '1px solid var(--dsw-alias-border-l2)', overflowX: 'auto' } },
           ...instTabs,
           React.createElement('button', {
             onClick: () => {
@@ -197,17 +197,17 @@ window.__ModuleLoader__.load({
               state.activeId = n.id
               refresh()
             },
-            style: { cursor: 'pointer', border: '1px solid #444', borderRadius: 6, background: '#2d2d2d', color: '#d4d4d4', fontSize: 14, lineHeight: 1, padding: '3px 8px' },
+            style: { cursor: 'pointer', border: '1px solid var(--dsw-alias-border-l3)', borderRadius: 6, background: 'var(--dsw-alias-bg-layer-3)', color: 'var(--dsw-alias-label-primary)', fontSize: 14, lineHeight: 1, padding: '3px 8px' },
             title: '新增终端',
           }, '+'),
-          React.createElement('span', { style: { marginLeft: 'auto', color: '#666', fontSize: 11 } }, '运行中的命令不随 tab 切换丢失'),
+          React.createElement('span', { style: { marginLeft: 'auto', color: 'var(--dsw-alias-label-tertiary)', fontSize: 11 } }, '运行中的命令不随 tab 切换丢失'),
         ),
         React.createElement('div', { ref: scrollRef, style: { flex: 1, overflowY: 'auto', padding: '8px 12px' } },
           !inst || inst.blocks.length === 0
-            ? React.createElement('div', { style: { color: '#6a9955' } }, '就绪。在下方输入命令（如 yarn dev、git status、node -v）后回车执行。')
+            ? React.createElement('div', { style: { color: 'var(--dsw-alias-state-success-secondary)' } }, '就绪。在下方输入命令（如 yarn dev、git status、node -v）后回车执行。')
             : blocks,
         ),
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: '1px solid #333' } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: '1px solid var(--dsw-alias-border-l2)' } },
           React.createElement('span', { style: { color: '#4ec9b0', whiteSpace: 'nowrap' } }, 'PS ' + (inst ? inst.cwd : '') + '>'),
           React.createElement('input', {
             value: inst ? inst.input : '',
@@ -219,7 +219,7 @@ window.__ModuleLoader__.load({
               if (e.key === 'Enter') runCmd()
             },
             placeholder: inst && inst.running ? '执行中…' : '输入命令，回车执行',
-            style: { flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#d4d4d4', fontFamily: 'inherit', fontSize: 12 },
+            style: { flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--dsw-alias-label-primary)', fontFamily: 'inherit', fontSize: 12 },
           }),
         ),
       )
