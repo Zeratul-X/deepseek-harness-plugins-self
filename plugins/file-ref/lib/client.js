@@ -5,10 +5,11 @@
 //    text '@relative/path ' directly into the draft (NO chip, NO placeholder —
 //    the input stays a normal textarea with normal caret behavior).
 // 2) a reference dock above the composer scans the draft for '@token' refs and
-//    shows each that resolves to a REAL file in the current workspace (async
-//    /api/exists verification, cached); click opens the code preview overlay
-//    with line selection (click a line number, Shift-click / drag for a range,
-//    Ctrl+F to search); ✕ removes the token from the draft.
+//    shows each that resolves to a REAL code file in the current workspace
+//    (async /api/exists verification, cached; non-code formats like images /
+//    docs / archives stay as plain text in the input only); click opens the
+//    code preview overlay with line selection (click a line number, Shift-click
+//    / drag for a range, Ctrl+F to search); ✕ removes the token from the draft.
 // 3) confirming in the preview rewrites that token in place to plain text
 //    '@relative/path line <a>-<b>'.
 window.__ModuleLoader__.load({
@@ -25,6 +26,10 @@ window.__ModuleLoader__.load({
 
     // 最近一次 @ 拉取所属的会话 id：搜索与预览读取都按会话归属的工作区定位。
     let activeSessionId = null
+
+    // 非代码格式（媒体/文档/压缩包/二进制等）：不进 dock、不弹预览，
+    // 只以纯文本留在输入框里。
+    const NON_CODE_RE = /\.(png|jpe?g|gif|webp|bmp|ico|svg|avif|mp4|mkv|mov|avi|webm|flv|wmv|mp3|wav|flac|ogg|m4a|aac|pdf|docx?|xlsx?|pptx?|odt|ods|odp|epub|zip|rar|7z|tar|gz|bz2|xz|zst|exe|dll|so|dylib|bin|class|jar|wasm|deb|rpm|iso|img|ttf|otf|woff2?|eot|db|sqlite3?|pdb|pyc|pyo|o|a|lib|obj|pak)$/i
 
     // dock 引用校验缓存：path -> true/false；只展示当前工作区真实存在的文件引用，
     // 随手打的 @xxx 文本不会上 dock。
@@ -521,7 +526,7 @@ window.__ModuleLoader__.load({
       const ta = e.target
       if (!ta || ta.tagName !== 'TEXTAREA' || !ta.hasAttribute('data-phase')) return
       const token = tokenAt(ta.value, ta.selectionStart)
-      if (!token) return
+      if (!token || NON_CODE_RE.test(token.path)) return
       openPreviewForPath(token.path, ta, token, activeSessionId)
     }
 
@@ -546,7 +551,9 @@ window.__ModuleLoader__.load({
           }
         })
       }, [draft, sessionId, refresh])
-      const visible = tokens.filter(function (token) { return fileExistsCache[token.path] === true })
+      const visible = tokens.filter(function (token) {
+        return fileExistsCache[token.path] === true && !NON_CODE_RE.test(token.path)
+      })
       if (visible.length === 0) return null
       const items = visible.map(function (token, i) {
         const label = '@' + token.path
