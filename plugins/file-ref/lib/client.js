@@ -110,11 +110,15 @@ window.__ModuleLoader__.load({
       '.fr-ref:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 14%,transparent);color:var(--dsw-alias-label-primary)}',
       '.fr-x{border:none;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:0 3px;font-size:12px;line-height:16px;border-radius:4px;flex:none}',
       '.fr-x:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
-      // 内容过长摘要胶囊（Claude Code 风格）：首行预览 + 行数，点击回到输入框顶部
+      // 内容过长摘要胶囊：超过 20 行时输入框折叠，胶囊显示首行预览 + 行数，
+      // 点击展开/收起输入框（Claude Code 风格）
       '.fr-sum{display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px dashed var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);border-radius:6px;padding:2px 8px;font-size:12px;line-height:20px;cursor:pointer;overflow:hidden}',
       '.fr-sum:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary)}',
       '.fr-sum-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.fr-sum-meta{flex:none;color:var(--dsw-alias-state-business-primary);font-weight:700;font-variant-numeric:tabular-nums}',
+      '.fr-sum-action{flex:none;color:var(--dsw-alias-label-tertiary);font-size:11px}',
+      // 折叠态：输入框限高两行，内容通过 dock 胶囊读取
+      '[data-input-scroll].fr-collapsed{max-height:64px!important}',
       // 预览浮层
       '.rs-mask{position:fixed;inset:0;z-index:99999;background:var(--dsw-alias-bg-mask-2);display:flex;align-items:center;justify-content:center}',
       '.rs-panel{width:min(720px,92vw);max-height:min(560px,86vh);display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);overflow:hidden}',
@@ -537,9 +541,10 @@ window.__ModuleLoader__.load({
 
     /** The reference dock: scans the draft for '@token' refs and shows each that
      * resolves to a real file in the current workspace; click opens the preview,
-     * ✕ removes the token from the draft. When the draft gets long (Claude Code
-     * style) it also shows a content summary pill: first-line preview + line
-     * count; clicking it focuses the input and scrolls back to the top. */
+     * ✕ removes the token from the draft. When the draft exceeds 20 lines it
+     * COLLAPSES the input box to ~2 lines (content is no longer fully shown in
+     * the input) and shows a Claude-Code-style summary pill (first-line preview
+     * + line count); clicking the pill expands/collapses the input box. */
     function FileRefDock(props) {
       const input = props.input
       const draft = (input && input.draft) || ''
@@ -551,15 +556,17 @@ window.__ModuleLoader__.load({
         tokens.push({ path: tokenPath(m[0]), start: m.index, end: m.index + m[0].length })
       }
       const [refresh, setRefresh] = react.useState(0)
+      const [expanded, setExpanded] = react.useState(false)
       const [summary, setSummary] = react.useState(null)
       react.useEffect(function () {
-        const seat = document.querySelector('[data-composer-seat]')
-        const mirror = seat ? seat.querySelector('[data-input-mirror]') : null
+        // 阈值：草稿超过 20 行 → 输入框折叠为两行高度，内容通过 dock 胶囊读取
         const lines = draft.split('\n')
-        const visual = mirror ? mirror.offsetHeight : lines.length * 24
-        const long = draft.trim() !== '' && (lines.length > 2 || visual > 120)
+        const long = draft.trim() !== '' && lines.length > 20
+        const seat = document.querySelector('[data-composer-seat]')
+        const scroll = seat ? seat.querySelector('[data-input-scroll]') : null
+        if (scroll) scroll.classList.toggle('fr-collapsed', long && !expanded)
         setSummary(long ? { first: lines[0].trim(), lines: lines.length, chars: draft.length } : null)
-      }, [draft])
+      }, [draft, expanded])
       react.useEffect(function () {
         tokens.forEach(function (token) {
           if (!(token.path in fileExistsCache)) {
@@ -614,19 +621,23 @@ window.__ModuleLoader__.load({
           {
             key: 'summary',
             className: 'fr-sum',
-            title: '内容过长已折叠：点击回到输入框顶部查看全文',
+            title: expanded ? '收起输入框' : '内容过长已折叠：点击展开输入框查看全文',
             onClick: function (e) {
               e.stopPropagation()
+              const next = !expanded
+              setExpanded(next)
               const seat = e.currentTarget.closest('[data-composer-seat]')
               const ta = seat ? seat.querySelector('textarea[data-phase]') : null
-              if (!ta) return
-              const scroll = ta.closest('[data-input-scroll]')
-              if (scroll) scroll.scrollTop = 0
-              ta.focus()
+              if (ta && next) {
+                const scroll = ta.closest('[data-input-scroll]')
+                if (scroll) scroll.scrollTop = 0
+                ta.focus()
+              }
             }
           },
           react.createElement('span', { className: 'fr-sum-text' }, '“' + (preview || '…') + '”'),
-          react.createElement('span', { className: 'fr-sum-meta' }, '+' + Math.max(1, summary.lines - 1) + ' 行')
+          react.createElement('span', { className: 'fr-sum-meta' }, '+' + Math.max(1, summary.lines - 1) + ' 行'),
+          react.createElement('span', { className: 'fr-sum-action' }, expanded ? '收起 ▴' : '展开 ▾')
         ))
       }
       return react.createElement('div', { className: 'fr-dock', 'data-fr-dock': true }, items)
