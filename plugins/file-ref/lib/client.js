@@ -41,18 +41,21 @@ window.__ModuleLoader__.load({
       fileExistsPending[path] = true
       let qs = '?path=' + encodeURIComponent(path)
       if (sessionId) qs += '&session=' + encodeURIComponent(sessionId)
+      const done = function (exists) {
+        fileExistsCache[path] = exists
+        delete fileExistsPending[path]
+        cb(exists)
+      }
       fetch(EXISTS_API + qs)
-        .then(function (res) { return res.json() })
-        .then(function (data) {
-          fileExistsCache[path] = !!(data && data.exists)
-          delete fileExistsPending[path]
-          cb(fileExistsCache[path])
+        .then(function (res) {
+          // host 端未重载（旧版没有 /api/exists 路由）时降级用 read 校验存在性
+          if (res.status === 404) {
+            return fetch(READ_API + qs).then(function (r) { return r.json() }).then(function (d) { return { exists: !!(d && d.ok) } })
+          }
+          return res.json()
         })
-        .catch(function () {
-          fileExistsCache[path] = false
-          delete fileExistsPending[path]
-          cb(false)
-        })
+        .then(function (data) { done(!!(data && data.exists)) })
+        .catch(function () { done(false) })
     }
 
     function fetchFiles(query, signal, sessionId) {
