@@ -1,7 +1,9 @@
 // harness-file-ref host half: workspace file search for the '@' file picker.
-// Serves GET /__file-ref/api/search?q=<query> — a bounded recursive walk of
-// every registered workspace, cached per workspace for 10s. Read-only.
-// Also GET /__file-ref/api/read?path=<rel> — reads one workspace file (bounded).
+// Serves GET /__file-ref/api/search?q=<query>[&session=<sessionId>] — a bounded
+// recursive walk of the SESSION's workspace (fallback: all workspaces when the
+// session cannot be attributed), cached per workspace for 10s. Read-only.
+// Also GET /__file-ref/api/read?path=<rel>[&session=<sessionId>] — reads one
+// workspace file (bounded), preferring the session's workspace.
 import { open, readdir, stat } from 'node:fs/promises'
 import { relative, resolve, sep } from 'node:path'
 
@@ -68,9 +70,16 @@ function getIndex(root) {
   return promise
 }
 
+/** Resolve the registered workspace hosting a session ("当前展开的工作区"), or undefined. */
+function workspaceForSession(registry, sessionId) {
+  if (!sessionId) return undefined
+  return registry.list().find((w) => w.sessionIds.includes(sessionId))
+}
+
 async function handleSearch(ctx, rawUrl, res) {
   const url = new URL(rawUrl, 'http://x')
   const query = (url.searchParams.get('q') ?? '').toLowerCase()
+  const sessionId = url.searchParams.get('session') ?? ''
   const registry = ctx.get('workspaceRegistry')
   if (registry === undefined) {
     sendJson(res, 200, { ok: true, files: [] })
@@ -78,7 +87,10 @@ async function handleSearch(ctx, rawUrl, res) {
   }
   const files = []
   try {
-    const workspaces = registry.list()
+    // 只列当前会话所属工作区（“当前展开的工作区”）的文件；
+    // 会话无法归属时回退到全量列表（warm 等无会话场景）。
+    const scoped = workspaceForSession(registry, sessionId)
+    const workspaces = scoped !== undefined ? [scoped] : registry.list()
     for (const workspace of workspaces) {
       let rels
       try {
@@ -88,7 +100,7 @@ async function handleSearch(ctx, rawUrl, res) {
       }
       for (const rel of rels) {
         if (query !== '' && !rel.toLowerCase().includes(query)) continue
-        files.push({ path: rel, workspace: workspace.title })
+        files.push({ path: rel, workspace: workspace.title, workspaceId: workspace.id })
         if (files.length >= RESULT_LIMIT) break
       }
       if (files.length >= RESULT_LIMIT) break
@@ -103,6 +115,7 @@ async function handleSearch(ctx, rawUrl, res) {
 async function handleRead(ctx, rawUrl, res) {
   const url = new URL(rawUrl, 'http://x')
   const rel = (url.searchParams.get('path') ?? '').replace(/^\/+/, '')
+  const sessionId = url.searchParams.get('session') ?? ''
   if (rel === '' || rel.includes('\0')) {
     sendJson(res, 200, { ok: false, error: 'empty path' })
     return
@@ -112,7 +125,12 @@ async function handleRead(ctx, rawUrl, res) {
     sendJson(res, 200, { ok: false, error: 'no workspace registry' })
     return
   }
-  for (const workspace of registry.list()) {
+  // 优先从会话所属工作区读取，避免同名相对路径命中错误的工作区；找不到再回退全量。
+  const scoped = workspaceForSession(registry, sessionId)
+  const workspaces = scoped !== undefined
+    ? [scoped, ...registry.list().filter((w) => w !== scoped)]
+    : registry.list()
+  for (const workspace of workspaces) {
     const abs = resolve(workspace.path, rel)
     if (abs !== resolve(workspace.path) && !abs.startsWith(resolve(workspace.path) + sep)) continue
     let info

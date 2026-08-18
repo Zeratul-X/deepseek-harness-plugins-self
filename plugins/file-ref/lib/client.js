@@ -1,7 +1,8 @@
 // harness-file-ref client half:
 // 1) registers the '@' file reference source into the input-trigger pipeline —
-//    typing @ in the composer opens a workspace file picker (fuzzy substring
-//    filter), picking one inserts '@relative/path'.
+//    typing @ in the composer opens a file picker scoped to the CURRENT
+//    session's workspace (fuzzy substring filter), picking one inserts
+//    '@relative/path'.
 // 2) a reference dock above the composer lists every pending '@file' reference
 //    with its FULL path (the in-composer chip keeps only a marker dot, since
 //    the official chip label gets clipped inside the input), opens the code
@@ -21,8 +22,13 @@ window.__ModuleLoader__.load({
     const API = '/__file-ref/api/search'
     const READ_API = '/__file-ref/api/read'
 
-    function fetchFiles(query, signal) {
-      return fetch(API + '?q=' + encodeURIComponent(query || ''), { signal })
+    // 最近一次 @ 拉取所属的会话 id：搜索与预览读取都按会话归属的工作区定位。
+    let activeSessionId = null
+
+    function fetchFiles(query, signal, sessionId) {
+      let qs = '?q=' + encodeURIComponent(query || '')
+      if (sessionId) qs += '&session=' + encodeURIComponent(sessionId)
+      return fetch(API + qs, { signal })
         .then(function (res) { return res.json() })
         .then(function (data) {
           if (!data.ok) return []
@@ -35,7 +41,8 @@ window.__ModuleLoader__.load({
       name: 'file',
       order: 1,
       async candidates(session, { query, signal }) {
-        const files = await fetchFiles(query, signal)
+        if (session && session.sessionId) activeSessionId = session.sessionId
+        const files = await fetchFiles(query, signal, activeSessionId)
         if (signal.aborted) return []
         return files.map(function (file) {
           const parts = file.path.split('/')
@@ -78,6 +85,9 @@ window.__ModuleLoader__.load({
       '[data-decoration="chip"][title^="@"]{display:inline-flex!important;align-items:center;max-width:100%;background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);padding:1px 8px!important;border-radius:6px}',
       '[data-decoration="chip"][title^="@"]:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 20%,transparent)}',
       '[data-decoration="chip"][title^="@"] [class*="chipLabel"]{position:static!important;display:block!important;width:auto!important;max-width:100%;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;transform:none!important;font-size:13px!important;line-height:20px!important}',
+      // 官方 chip 用 :before 渲染透明 DshChipCell 占位字形来对齐草稿里的 \uFFFC；
+      // 标签改为静态全尺寸后它就成了 pill 前端的空白，直接去掉。
+      '[data-decoration="chip"][title^="@"]:before{content:none!important}',
       // 引用 dock：输入框上方，完整路径，点击弹代码预览，✕ 移除引用
       '.fr-dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));max-width:calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));margin:0 auto 6px;padding:0 var(--dsh-composer-dock-inset);display:flex;flex-wrap:wrap;align-items:center;gap:6px}',
       '.fr-ref{display:inline-flex;align-items:center;gap:4px;max-width:100%;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);border-radius:6px;padding:2px 8px;font-size:12px;line-height:20px;cursor:pointer;font-family:Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
@@ -375,7 +385,7 @@ window.__ModuleLoader__.load({
     }
 
     /** Open the preview overlay for one workspace-relative path (dock chip or in-composer chip). */
-    function openPreviewForPath(path, target) {
+    function openPreviewForPath(path, target, sessionId) {
       if (!path) return
       if (target) chipEl = target
       if (overlay) {
@@ -441,7 +451,9 @@ window.__ModuleLoader__.load({
       document.addEventListener('mouseup', onDocUp, true)
       document.addEventListener('keydown', onKeyDown, true)
 
-      fetch(READ_API + '?path=' + encodeURIComponent(path))
+      let readQs = '?path=' + encodeURIComponent(path)
+      if (sessionId) readQs += '&session=' + encodeURIComponent(sessionId)
+      fetch(READ_API + readQs)
         .then(function (res) { return res.json() })
         .then(function (data) {
           if (!data.ok) {
@@ -477,7 +489,7 @@ window.__ModuleLoader__.load({
       if (!chipEl) return
       const label = chipLabel(chipEl)
       const path = String(label || '').replace(/^@/, '')
-      openPreviewForPath(path, chipEl)
+      openPreviewForPath(path, chipEl, activeSessionId)
     }
 
     /** Remove one '@file' occurrence from the draft by deleting its placeholder char. */
@@ -518,7 +530,7 @@ window.__ModuleLoader__.load({
               const chip = seat
                 ? seat.querySelector('[data-decoration="chip"][data-occurrence="' + occ.occurrenceId + '"]')
                 : null
-              openPreviewForPath(path, chip)
+              openPreviewForPath(path, chip, props.session && props.session.sessionId)
             }
           },
           label,
