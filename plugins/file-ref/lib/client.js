@@ -4,12 +4,14 @@
 //    session's workspace (fuzzy substring filter), picking one inserts
 //    '@relative/path'.
 // 2) a reference dock above the composer lists every pending '@file' reference
-//    with its FULL path (the in-composer chip keeps only a marker dot, since
-//    the official chip label gets clipped inside the input), opens the code
-//    preview overlay on click, and removes the reference via the ✕ button.
-// 3) clicking the '@path' chip in the composer (or a dock entry) opens a file
-//    preview overlay with line selection (click a line number, Shift-click /
-//    drag for a range, Ctrl+F to search); confirming rewrites the chip into
+//    with its FULL path; the in-composer chip is fully invisible (the label is
+//    hidden, only the official transparent placeholder cell keeps draft
+//    alignment), so the input stays clean — the dock is the only display for
+//    pending refs; it opens the code preview on click and removes the
+//    reference via the ✕ button.
+// 3) clicking a dock entry opens a file preview overlay with line selection
+//    (click a line number, Shift-click / drag for a range, Ctrl+F to search);
+//    confirming rewrites the placeholder into plain text
 //    '@relative/path line <a>-<b>' in the draft.
 window.__ModuleLoader__.load({
   id: 'harness-file-ref',
@@ -79,15 +81,13 @@ window.__ModuleLoader__.load({
     // ---------- reference dock + chip → preview → line-range rewrite ----------
 
     const CSS = [
-      // @文件引用 chip：输入框内正常显示路径文本（修正官方 chipLabel 的
-      // 缩放裁剪），超宽省略；完整路径在引用 dock 与 hover title。
+      // @文件引用 chip：输入框内完全隐形——去掉背景 pill 与标签文本，只保留
+      // 官方 :before 透明占位字形（与草稿 \uFFFC 等宽，后续文本保持对齐）；
+      // 文件引用只在输入框上方 dock 展示，点击 dock 弹预览选行。
       '[data-decoration="chip"]{pointer-events:auto!important;cursor:pointer}',
-      '[data-decoration="chip"][title^="@"]{display:inline-flex!important;align-items:center;max-width:100%;background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);padding:1px 8px!important;border-radius:6px}',
-      '[data-decoration="chip"][title^="@"]:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 20%,transparent)}',
-      '[data-decoration="chip"][title^="@"] [class*="chipLabel"]{position:static!important;display:block!important;width:auto!important;max-width:100%;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;transform:none!important;font-size:13px!important;line-height:20px!important}',
-      // 官方 chip 用 :before 渲染透明 DshChipCell 占位字形来对齐草稿里的 \uFFFC；
-      // 标签改为静态全尺寸后它就成了 pill 前端的空白，直接去掉。
-      '[data-decoration="chip"][title^="@"]:before{content:none!important}',
+      '[data-decoration="chip"][title^="@"]{display:inline!important;background:transparent!important;padding:0!important;border-radius:0!important;max-width:none!important}',
+      '[data-decoration="chip"][title^="@"]:hover{background:transparent!important}',
+      '[data-decoration="chip"][title^="@"] [class*="chipLabel"]{display:none!important}',
       // 引用 dock：输入框上方，完整路径，点击弹代码预览，✕ 移除引用
       '.fr-dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));max-width:calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));margin:0 auto 6px;padding:0 var(--dsh-composer-dock-inset);display:flex;flex-wrap:wrap;align-items:center;gap:6px}',
       '.fr-ref{display:inline-flex;align-items:center;gap:4px;max-width:100%;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);border-radius:6px;padding:2px 8px;font-size:12px;line-height:20px;cursor:pointer;font-family:Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
