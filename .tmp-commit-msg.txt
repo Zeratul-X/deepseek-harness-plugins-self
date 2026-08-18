@@ -1,9 +1,0 @@
-﻿fix(file-ref): @ 文件选择严格限定当前工作区；dock 只展示真实存在的文件引用
-
-- workspaceForSession 改用未过滤的 record.sessionIds 归属解析：公开的 sessionIds
-  getter 按 cwd 索引(sessionPaths)过滤，会话不在索引时会归属失败并回退全量
-  工作区，导致 picker 混入其他工作区的文件列表
-- 新增 GET /__file-ref/api/exists?path=&session= 精确存在性校验(会话工作区优先)
-- dock 不再展示任意 @xxx 文本：异步校验 token 是否为当前工作区真实文件(带缓存)，
-  随手打的 @文字/邮箱等不会上 dock
-- 点击 dock 项/输入框 @path 文本、选行替换、✕ 移除逻辑保持不变
