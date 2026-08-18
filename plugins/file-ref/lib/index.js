@@ -70,10 +70,17 @@ function getIndex(root) {
   return promise
 }
 
-/** Resolve the registered workspace hosting a session ("当前展开的工作区"), or undefined. */
+/** Resolve the registered workspace hosting a session ("当前展开的工作区"), or undefined.
+ * Uses the RAW ownership list (record.sessionIds) first: the public sessionIds
+ * getter filters by the live cwd index (sessionPaths), which can miss sessions
+ * and break scoping; the durable record always knows the owner. */
 function workspaceForSession(registry, sessionId) {
   if (!sessionId) return undefined
-  return registry.list().find((w) => w.sessionIds.includes(sessionId))
+  return registry.list().find((w) => {
+    const raw = w.record && w.record.sessionIds
+    if (raw && raw.includes(sessionId)) return true
+    return w.sessionIds.includes(sessionId)
+  })
 }
 
 async function handleSearch(ctx, rawUrl, res) {
@@ -165,11 +172,44 @@ async function handleRead(ctx, rawUrl, res) {
   sendJson(res, 200, { ok: false, error: 'file not found in any workspace' })
 }
 
+/** Cheap exact-path existence check inside the session's workspace (dock 引用校验用). */
+async function handleExists(ctx, rawUrl, res) {
+  const url = new URL(rawUrl, 'http://x')
+  const rel = (url.searchParams.get('path') ?? '').replace(/^\/+/, '')
+  const sessionId = url.searchParams.get('session') ?? ''
+  if (rel === '' || rel.includes('\0')) {
+    sendJson(res, 200, { ok: false, exists: false })
+    return
+  }
+  const registry = ctx.get('workspaceRegistry')
+  if (registry === undefined) {
+    sendJson(res, 200, { ok: true, exists: false })
+    return
+  }
+  const scoped = workspaceForSession(registry, sessionId)
+  const workspaces = scoped !== undefined ? [scoped, ...registry.list().filter((w) => w !== scoped)] : registry.list()
+  for (const workspace of workspaces) {
+    const abs = resolve(workspace.path, rel)
+    if (abs !== resolve(workspace.path) && !abs.startsWith(resolve(workspace.path) + sep)) continue
+    try {
+      const info = await stat(abs)
+      if (info.isFile()) {
+        sendJson(res, 200, { ok: true, exists: true, workspace: workspace.title })
+        return
+      }
+    } catch {
+      continue
+    }
+  }
+  sendJson(res, 200, { ok: true, exists: false })
+}
+
 async function handle(ctx, req, res) {
   const pathname = new URL(req.url ?? '/', 'http://x').pathname
   const rest = pathname.slice(PREFIX.length)
   if (rest === '/api/search') return handleSearch(ctx, req.url ?? '/', res)
   if (rest === '/api/read') return handleRead(ctx, req.url ?? '/', res)
+  if (rest === '/api/exists') return handleExists(ctx, req.url ?? '/', res)
   sendJson(res, 404, { ok: false, error: 'unknown file-ref route' })
 }
 

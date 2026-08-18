@@ -5,8 +5,9 @@
 //    text '@relative/path ' directly into the draft (NO chip, NO placeholder —
 //    the input stays a normal textarea with normal caret behavior).
 // 2) a reference dock above the composer scans the draft for '@token' refs and
-//    shows each with its full path; click opens the code preview overlay with
-//    line selection (click a line number, Shift-click / drag for a range,
+//    shows each that resolves to a REAL file in the current workspace (async
+//    /api/exists verification, cached); click opens the code preview overlay
+//    with line selection (click a line number, Shift-click / drag for a range,
 //    Ctrl+F to search); ✕ removes the token from the draft.
 // 3) confirming in the preview rewrites that token in place to plain text
 //    '@relative/path line <a>-<b>'.
@@ -20,9 +21,34 @@ window.__ModuleLoader__.load({
 
     const API = '/__file-ref/api/search'
     const READ_API = '/__file-ref/api/read'
+    const EXISTS_API = '/__file-ref/api/exists'
 
     // 最近一次 @ 拉取所属的会话 id：搜索与预览读取都按会话归属的工作区定位。
     let activeSessionId = null
+
+    // dock 引用校验缓存：path -> true/false；只展示当前工作区真实存在的文件引用，
+    // 随手打的 @xxx 文本不会上 dock。
+    const fileExistsCache = {}
+    const fileExistsPending = {}
+    function verifyFileToken(path, sessionId, cb) {
+      if (path in fileExistsCache) { cb(fileExistsCache[path]); return }
+      if (fileExistsPending[path]) return
+      fileExistsPending[path] = true
+      let qs = '?path=' + encodeURIComponent(path)
+      if (sessionId) qs += '&session=' + encodeURIComponent(sessionId)
+      fetch(EXISTS_API + qs)
+        .then(function (res) { return res.json() })
+        .then(function (data) {
+          fileExistsCache[path] = !!(data && data.exists)
+          delete fileExistsPending[path]
+          cb(fileExistsCache[path])
+        })
+        .catch(function () {
+          fileExistsCache[path] = false
+          delete fileExistsPending[path]
+          cb(false)
+        })
+    }
 
     function fetchFiles(query, signal, sessionId) {
       let qs = '?q=' + encodeURIComponent(query || '')
@@ -499,20 +525,30 @@ window.__ModuleLoader__.load({
       openPreviewForPath(token.path, ta, token, activeSessionId)
     }
 
-    /** The reference dock: scans the draft for '@token' refs (no chip state needed),
-     * shows each above the composer; click opens the preview, ✕ removes the token. */
+    /** The reference dock: scans the draft for '@token' refs and shows each that
+     * resolves to a real file in the current workspace; click opens the preview,
+     * ✕ removes the token from the draft. */
     function FileRefDock(props) {
       const input = props.input
       const draft = (input && input.draft) || ''
+      const sessionId = (props.session && props.session.sessionId) || activeSessionId
       const tokens = []
       const re = /@\S+/g
       let m
       while ((m = re.exec(draft)) !== null) {
         tokens.push({ path: tokenPath(m[0]), start: m.index, end: m.index + m[0].length })
       }
-      if (tokens.length === 0) return null
-      const sessionId = (props.session && props.session.sessionId) || activeSessionId
-      const items = tokens.map(function (token, i) {
+      const [refresh, setRefresh] = react.useState(0)
+      react.useEffect(function () {
+        tokens.forEach(function (token) {
+          if (!(token.path in fileExistsCache)) {
+            verifyFileToken(token.path, sessionId, function () { setRefresh(function (n) { return n + 1 }) })
+          }
+        })
+      }, [draft, sessionId, refresh])
+      const visible = tokens.filter(function (token) { return fileExistsCache[token.path] === true })
+      if (visible.length === 0) return null
+      const items = visible.map(function (token, i) {
         const label = '@' + token.path
         return react.createElement(
           'span',
