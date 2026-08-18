@@ -2,17 +2,21 @@
 // 1) registers the '@' file reference source into the input-trigger pipeline —
 //    typing @ in the composer opens a file picker scoped to the CURRENT
 //    session's workspace (fuzzy substring filter); picking one inserts plain
-//    text '@relative/path' directly into the draft (NO chip, NO placeholder,
-//    NO dock — the input stays a normal textarea with normal caret behavior).
-// 2) clicking an '@path' token in the draft opens a code preview overlay with
+//    text '@relative/path ' directly into the draft (NO chip, NO placeholder —
+//    the input stays a normal textarea with normal caret behavior).
+// 2) a reference dock above the composer scans the draft for '@token' refs and
+//    shows each with its full path; click opens the code preview overlay with
 //    line selection (click a line number, Shift-click / drag for a range,
-//    Ctrl+F to search); confirming rewrites that token in place to plain text
+//    Ctrl+F to search); ✕ removes the token from the draft.
+// 3) confirming in the preview rewrites that token in place to plain text
 //    '@relative/path line <a>-<b>'.
 window.__ModuleLoader__.load({
   id: 'harness-file-ref',
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports
+
+    const react = require('react')
 
     const API = '/__file-ref/api/search'
     const READ_API = '/__file-ref/api/read'
@@ -65,9 +69,16 @@ window.__ModuleLoader__.load({
       }
     }
 
-    // ---------- preview overlay: '@token' click → line-range rewrite ----------
+    // ---------- reference dock + preview overlay: '@token' click → line-range rewrite ----------
 
     const CSS = [
+      // 引用 dock：输入框上方，扫描草稿里的 '@token' 展示（不依赖 chip 占位符），
+      // 点击弹代码预览选行，✕ 移除草稿中的对应 token。
+      '.fr-dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));max-width:calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));margin:0 auto 6px;padding:0 var(--dsh-composer-dock-inset);display:flex;flex-wrap:wrap;align-items:center;gap:6px}',
+      '.fr-ref{display:inline-flex;align-items:center;gap:4px;max-width:100%;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);border-radius:6px;padding:2px 8px;font-size:12px;line-height:20px;cursor:pointer;font-family:Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.fr-ref:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 14%,transparent);color:var(--dsw-alias-label-primary)}',
+      '.fr-x{border:none;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:0 3px;font-size:12px;line-height:16px;border-radius:4px;flex:none}',
+      '.fr-x:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
       // 预览浮层
       '.rs-mask{position:fixed;inset:0;z-index:99999;background:var(--dsw-alias-bg-mask-2);display:flex;align-items:center;justify-content:center}',
       '.rs-panel{width:min(720px,92vw);max-height:min(560px,86vh);display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);overflow:hidden}',
@@ -118,6 +129,13 @@ window.__ModuleLoader__.load({
       document.head.appendChild(styleEl)
     }
 
+    /** '@token' 的路径：去掉前导 @ 与尾部标点（如 '@foo.ts，' → 'foo.ts'）。 */
+    function tokenPath(token) {
+      return String(token || '')
+        .replace(/^@/, '')
+        .replace(/[,.;:!?，。；：！？、)）\]】}》>]+$/, '')
+    }
+
     /** Find the '@token' (token = '@' + non-space run) containing draft offset `off`. */
     function tokenAt(value, off) {
       if (!value || typeof off !== 'number' || off < 0 || off > value.length) return null
@@ -125,10 +143,41 @@ window.__ModuleLoader__.load({
       let m
       while ((m = re.exec(value)) !== null) {
         if (off >= m.index && off <= m.index + m[0].length) {
-          return { path: m[0].slice(1), start: m.index, end: m.index + m[0].length }
+          return { path: tokenPath(m[0]), start: m.index, end: m.index + m[0].length }
         }
       }
       return null
+    }
+
+    /** Re-scan the current draft for the first '@token' whose path equals `path`. */
+    function findTokenInDraft(draft, path) {
+      if (!draft) return null
+      const re = /@\S+/g
+      let m
+      while ((m = re.exec(draft)) !== null) {
+        if (tokenPath(m[0]) === path) {
+          return { path, start: m.index, end: m.index + m[0].length }
+        }
+      }
+      return null
+    }
+
+    /** Delete one '@token' span from the draft (plus one adjacent space). */
+    function removeToken(ta, start, end) {
+      if (!ta || start < 0 || end < start) return false
+      const value = ta.value
+      let s = start
+      let e = end
+      if (value[e] === ' ') e += 1
+      else if (value[s - 1] === ' ') s -= 1
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
+      setter.call(ta, value.slice(0, s) + value.slice(e))
+      ta.dispatchEvent(new Event('input', { bubbles: true }))
+      ta.focus()
+      try {
+        ta.setSelectionRange(s, s)
+      } catch (err) { /* noop */ }
+      return true
     }
 
     /** Replace the recorded '@token' span in the textarea with plain text (native setter + input event). */
@@ -450,7 +499,71 @@ window.__ModuleLoader__.load({
       openPreviewForPath(token.path, ta, token, activeSessionId)
     }
 
+    /** The reference dock: scans the draft for '@token' refs (no chip state needed),
+     * shows each above the composer; click opens the preview, ✕ removes the token. */
+    function FileRefDock(props) {
+      const input = props.input
+      const draft = (input && input.draft) || ''
+      const tokens = []
+      const re = /@\S+/g
+      let m
+      while ((m = re.exec(draft)) !== null) {
+        tokens.push({ path: tokenPath(m[0]), start: m.index, end: m.index + m[0].length })
+      }
+      if (tokens.length === 0) return null
+      const sessionId = (props.session && props.session.sessionId) || activeSessionId
+      const items = tokens.map(function (token, i) {
+        const label = '@' + token.path
+        return react.createElement(
+          'span',
+          {
+            key: token.start + '-' + i,
+            className: 'fr-ref',
+            title: label,
+            onClick: function (e) {
+              e.stopPropagation()
+              const seat = e.currentTarget.closest('[data-composer-seat]')
+              const ta = seat ? seat.querySelector('textarea[data-phase]') : null
+              if (!ta) return
+              // 按当前草稿重新定位 token，避免渲染与点击之间草稿漂移
+              const fresh = findTokenInDraft(ta.value, token.path)
+              if (!fresh) return
+              openPreviewForPath(fresh.path, ta, fresh, sessionId)
+            }
+          },
+          label,
+          react.createElement('button', {
+            type: 'button',
+            className: 'fr-x',
+            title: '移除引用',
+            onClick: function (e) {
+              e.stopPropagation()
+              const seat = e.currentTarget.closest('[data-composer-seat]')
+              const ta = seat ? seat.querySelector('textarea[data-phase]') : null
+              if (!ta) return
+              const fresh = findTokenInDraft(ta.value, token.path)
+              if (!fresh) return
+              removeToken(ta, fresh.start, fresh.end)
+            }
+          }, '✕')
+        )
+      })
+      return react.createElement('div', { className: 'fr-dock', 'data-fr-dock': true }, items)
+    }
+
     function apply(ctx) {
+      const slots = ctx.get('slots')
+      if (slots !== undefined) {
+        ctx.effect(function () {
+          return slots.inject('conversation.input.dock', function () {
+            return slots.register({
+              name: 'conversation.input.dock',
+              id: 'file-refs',
+              order: 1
+            }, FileRefDock)
+          })
+        }, 'harness-file-ref: reference dock')
+      }
       const inputTriggers = ctx.get('inputTriggers')
       if (inputTriggers === undefined) {
         console.error('[harness-file-ref] inputTriggers service unavailable')
@@ -470,7 +583,7 @@ window.__ModuleLoader__.load({
 
     exports.source = source
     exports.apply = apply
-    exports.inject = ['inputTriggers']
+    exports.inject = ['inputTriggers', 'slots']
     return module.exports
   }
 })
