@@ -54,12 +54,13 @@ window.__ModuleLoader__.load({
         fetchFiles('', null).catch(function () {})
       },
       onPick({ candidate }) {
-        // 纯文本插入：直接写入 '@path'，不做 chip / 占位符 / dock，
-        // 输入框就是普通文本，光标位置与输入行为完全正常。
+        // 纯文本插入（与官方 @subagent 相同的 outcome 形状：text 直接挂在
+        // outcome 上，走 slash/input-insert-text）：直接写入 '@path '，
+        // 不做 chip / 占位符 / dock，输入框就是普通文本，光标行为完全正常。
+        // 注意：不能写成 { insert: { text } } —— 那会被 execute() 当作
+        // reference 走 insert-reference，重新引入 \uFFFC 占位符。
         return {
-          insert: {
-            text: '@' + candidate._path,
-          },
+          text: '@' + candidate._path + ' ',
         }
       }
     }
