@@ -1,25 +1,18 @@
 // harness-file-ref client half:
 // 1) registers the '@' file reference source into the input-trigger pipeline —
 //    typing @ in the composer opens a file picker scoped to the CURRENT
-//    session's workspace (fuzzy substring filter), picking one inserts
-//    '@relative/path'.
-// 2) a reference dock above the composer lists every pending '@file' reference
-//    with its FULL path; the in-composer chip is fully invisible (the label is
-//    hidden, only the official transparent placeholder cell keeps draft
-//    alignment), so the input stays clean — the dock is the only display for
-//    pending refs; it opens the code preview on click and removes the
-//    reference via the ✕ button.
-// 3) clicking a dock entry opens a file preview overlay with line selection
-//    (click a line number, Shift-click / drag for a range, Ctrl+F to search);
-//    confirming rewrites the placeholder into plain text
-//    '@relative/path line <a>-<b>' in the draft.
+//    session's workspace (fuzzy substring filter); picking one inserts plain
+//    text '@relative/path' directly into the draft (NO chip, NO placeholder,
+//    NO dock — the input stays a normal textarea with normal caret behavior).
+// 2) clicking an '@path' token in the draft opens a code preview overlay with
+//    line selection (click a line number, Shift-click / drag for a range,
+//    Ctrl+F to search); confirming rewrites that token in place to plain text
+//    '@relative/path line <a>-<b>'.
 window.__ModuleLoader__.load({
   id: 'harness-file-ref',
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports
-
-    const react = require('react')
 
     const API = '/__file-ref/api/search'
     const READ_API = '/__file-ref/api/read'
@@ -61,39 +54,19 @@ window.__ModuleLoader__.load({
         fetchFiles('', null).catch(function () {})
       },
       onPick({ candidate }) {
-        // 返回 reference（走 slash/input-insert-reference → chip 化），
-        // 而不是 text（纯文本）。chip 才有独立的 DOM 可点击/加样式。
+        // 纯文本插入：直接写入 '@path'，不做 chip / 占位符 / dock，
+        // 输入框就是普通文本，光标位置与输入行为完全正常。
         return {
           insert: {
-            source: 'file',
-            ref: candidate._path,
-            label: '@' + candidate._path,
-            clipboardText: '@' + candidate._path,
+            text: '@' + candidate._path,
           },
         }
-      },
-      codec: {
-        clipboardText: (ref) => '@' + ref,
-        serialize: (ref) => Promise.resolve('@' + ref)
       }
     }
 
-    // ---------- reference dock + chip → preview → line-range rewrite ----------
+    // ---------- preview overlay: '@token' click → line-range rewrite ----------
 
     const CSS = [
-      // @文件引用 chip：输入框内完全隐形——去掉背景 pill 与标签文本，只保留
-      // 官方 :before 透明占位字形（与草稿 \uFFFC 等宽，后续文本保持对齐）；
-      // 文件引用只在输入框上方 dock 展示，点击 dock 弹预览选行。
-      '[data-decoration="chip"]{pointer-events:auto!important;cursor:pointer}',
-      '[data-decoration="chip"][title^="@"]{display:inline!important;background:transparent!important;padding:0!important;border-radius:0!important;max-width:none!important}',
-      '[data-decoration="chip"][title^="@"]:hover{background:transparent!important}',
-      '[data-decoration="chip"][title^="@"] [class*="chipLabel"]{display:none!important}',
-      // 引用 dock：输入框上方，完整路径，点击弹代码预览，✕ 移除引用
-      '.fr-dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));max-width:calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));margin:0 auto 6px;padding:0 var(--dsh-composer-dock-inset);display:flex;flex-wrap:wrap;align-items:center;gap:6px}',
-      '.fr-ref{display:inline-flex;align-items:center;gap:4px;max-width:100%;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);border-radius:6px;padding:2px 8px;font-size:12px;line-height:20px;cursor:pointer;font-family:Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-      '.fr-ref:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 14%,transparent);color:var(--dsw-alias-label-primary)}',
-      '.fr-x{border:none;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:0 3px;font-size:12px;line-height:16px;border-radius:4px;flex:none}',
-      '.fr-x:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
       // 预览浮层
       '.rs-mask{position:fixed;inset:0;z-index:99999;background:var(--dsw-alias-bg-mask-2);display:flex;align-items:center;justify-content:center}',
       '.rs-panel{width:min(720px,92vw);max-height:min(560px,86vh);display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);overflow:hidden}',
@@ -132,9 +105,10 @@ window.__ModuleLoader__.load({
     let overlay = null
     let sel = { anchor: null, current: null, rows: [] }
     let dragging = false
-    let chipEl = null
     let search = { input: null, countEl: null, matches: [], index: -1, rows: [] }
     let searchTimer = null
+    // 预览对应的输入框与 '@token' 跨度：确认后原位替换为 '@path line a-b'。
+    let edit = { ta: null, start: -1, end: -1 }
 
     function ensureStyle() {
       if (styleEl) return
@@ -143,50 +117,32 @@ window.__ModuleLoader__.load({
       document.head.appendChild(styleEl)
     }
 
-    /** Rebuild the chip's offset in the draft by walking the backdrop children (DOM order == draft order). */
-    function chipOffset(el) {
-      const backdrop = el.closest('[data-input-backdrop]')
-      if (!backdrop) return -1
-      let off = 0
-      const nodes = backdrop.childNodes
-      for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i]
-        if (node === el) return off
-        if (node.nodeType === 3) {
-          off += node.textContent.length
-        } else if (node.nodeType === 1) {
-          if (node.getAttribute && node.getAttribute('data-decoration') === 'chip') off += 1
-          else off += (node.textContent || '').length
+    /** Find the '@token' (token = '@' + non-space run) containing draft offset `off`. */
+    function tokenAt(value, off) {
+      if (!value || typeof off !== 'number' || off < 0 || off > value.length) return null
+      const re = /@\S+/g
+      let m
+      while ((m = re.exec(value)) !== null) {
+        if (off >= m.index && off <= m.index + m[0].length) {
+          return { path: m[0].slice(1), start: m.index, end: m.index + m[0].length }
         }
       }
-      return -1
+      return null
     }
 
-    function chipLabel(el) {
-      const label = el.querySelector('.chipLabel, [class*="chipLabel"]')
-      return (label && label.textContent) || el.getAttribute('title') || ''
-    }
-
-    function applyLineRef(text) {
-      const backdrop = chipEl && chipEl.closest('[data-input-backdrop]')
-      const ta = backdrop && backdrop.parentElement
-        ? backdrop.parentElement.querySelector('textarea')
-        : document.querySelector('textarea[data-phase]')
-      if (!ta || !chipEl) return false
-      const off = chipOffset(chipEl)
+    /** Replace the recorded '@token' span in the textarea with plain text (native setter + input event). */
+    function applyLineText(text) {
+      const ta = edit.ta
+      if (!ta || edit.start < 0 || edit.end < edit.start) return false
       const value = ta.value
       const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
-      let next
-      if (off >= 0 && value[off] === '\uFFFC') {
-        // 占位符原位替换为 '@path line a-b'（后面原有的空格保留）
-        next = value.slice(0, off) + text + value.slice(off + 1)
-      } else {
-        // 占位符已被其他操作改写：退化为在末尾追加
-        next = value.length ? value.replace(/\s+$/, '') + ' ' + text : text
-      }
-      setter.call(ta, next)
+      setter.call(ta, value.slice(0, edit.start) + text + value.slice(edit.end))
       ta.dispatchEvent(new Event('input', { bubbles: true }))
       ta.focus()
+      const caret = edit.start + text.length
+      try {
+        ta.setSelectionRange(caret, caret)
+      } catch (e) { /* noop */ }
       return true
     }
 
@@ -198,7 +154,7 @@ window.__ModuleLoader__.load({
       }
       sel = { anchor: null, current: null, rows: [] }
       dragging = false
-      chipEl = null
+      edit = { ta: null, start: -1, end: -1 }
     }
 
     function selRange() {
@@ -384,19 +340,16 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** Open the preview overlay for one workspace-relative path (dock chip or in-composer chip). */
-    function openPreviewForPath(path, target, sessionId) {
-      if (!path) return
-      if (target) chipEl = target
-      if (overlay) {
-        // 替换旧浮层：先注销 document 级监听，避免重复注册
-        document.removeEventListener('mousemove', onDocMove, true)
-        document.removeEventListener('mouseup', onDocUp, true)
-        document.removeEventListener('keydown', onKeyDown, true)
-        overlay.remove()
-        overlay = null
-        sel = { anchor: null, current: null, rows: [] }
-      }
+    function fetchRead(path, sessionId) {
+      let qs = '?path=' + encodeURIComponent(path)
+      if (sessionId) qs += '&session=' + encodeURIComponent(sessionId)
+      return fetch(READ_API + qs).then(function (res) { return res.json() })
+    }
+
+    /** Build and show the overlay with already-fetched file data. */
+    function showOverlay(path, ta, token, data) {
+      if (overlay) closeOverlay()
+      edit = { ta: ta || null, start: token ? token.start : -1, end: token ? token.end : -1 }
       const mask = document.createElement('div')
       mask.className = 'rs-mask'
       mask.innerHTML =
@@ -431,7 +384,7 @@ window.__ModuleLoader__.load({
         searchTimer = setTimeout(runSearch, 120)
       })
       title.textContent = '@' + path
-      meta.textContent = '读取中…'
+      meta.textContent = (data.workspace || '') + (data.truncated ? ' · 已截断' : '') + ' · ' + data.lines.length + ' 行'
       mask.addEventListener('mousedown', function (e) {
         if (e.target === mask) closeOverlay()
       })
@@ -441,135 +394,62 @@ window.__ModuleLoader__.load({
         const range = selRange()
         if (!range) return
         const text = '@' + path + ' line ' + (range.lo + 1) + '-' + (range.hi + 1)
-        applyLineRef(text)
+        applyLineText(text)
         closeOverlay()
       }
+      const rows = []
+      data.lines.forEach(function (line, i) {
+        const row = document.createElement('div')
+        row.className = 'rs-row'
+        const ln = document.createElement('span')
+        ln.className = 'rs-ln'
+        ln.textContent = String(i + 1)
+        const code = document.createElement('span')
+        code.className = 'rs-code'
+        code.textContent = line
+        row.appendChild(ln)
+        row.appendChild(code)
+        body.appendChild(row)
+        rows.push(row)
+      })
+      sel.rows = rows
+      search.rows = rows
       document.body.appendChild(mask)
       overlay = mask
       body.addEventListener('mousedown', onOverlayDown)
       document.addEventListener('mousemove', onDocMove, true)
       document.addEventListener('mouseup', onDocUp, true)
       document.addEventListener('keydown', onKeyDown, true)
+    }
 
-      let readQs = '?path=' + encodeURIComponent(path)
-      if (sessionId) readQs += '&session=' + encodeURIComponent(sessionId)
-      fetch(READ_API + readQs)
-        .then(function (res) { return res.json() })
+    /** Open the preview for one '@path' token: verify the file exists first (silent no-op otherwise). */
+    function openPreviewForPath(path, ta, token, sessionId) {
+      if (!path) return
+      fetchRead(path, sessionId)
         .then(function (data) {
-          if (!data.ok) {
-            meta.textContent = '读取失败: ' + (data.error || 'unknown')
-            return
-          }
-          meta.textContent = (data.workspace || '') + (data.truncated ? ' · 已截断' : '') + ' · ' + data.lines.length + ' 行'
-          const rows = []
-          data.lines.forEach(function (line, i) {
-            const row = document.createElement('div')
-            row.className = 'rs-row'
-            const ln = document.createElement('span')
-            ln.className = 'rs-ln'
-            ln.textContent = String(i + 1)
-            const code = document.createElement('span')
-            code.className = 'rs-code'
-            code.textContent = line
-            row.appendChild(ln)
-            row.appendChild(code)
-            body.appendChild(row)
-            rows.push(row)
-          })
-          sel.rows = rows
-          search.rows = rows
+          if (data && data.ok) return data
+          // 会话归属解析失败时回退全工作区再试一次
+          if (sessionId) return fetchRead(path, null)
+          return null
         })
-        .catch(function (err) {
-          meta.textContent = '读取失败: ' + String((err && err.message) || err)
+        .then(function (data) {
+          if (!data || !data.ok) return
+          showOverlay(path, ta, token, data)
         })
+        .catch(function () {})
     }
 
-    /** In-composer chip click entry: read the chip label, open the overlay. */
-    function openPreview() {
-      if (!chipEl) return
-      const label = chipLabel(chipEl)
-      const path = String(label || '').replace(/^@/, '')
-      openPreviewForPath(path, chipEl, activeSessionId)
-    }
-
-    /** Remove one '@file' occurrence from the draft by deleting its placeholder char. */
-    function removeRef(occurrenceId, scope) {
-      const root = scope || document
-      const chip = root.querySelector('[data-decoration="chip"][data-occurrence="' + occurrenceId + '"]')
-      if (!chip) return
-      const off = chipOffset(chip)
-      const backdrop = chip.closest('[data-input-backdrop]')
-      const ta = backdrop && backdrop.parentElement
-        ? backdrop.parentElement.querySelector('textarea')
-        : document.querySelector('textarea[data-phase]')
-      if (!ta || off < 0) return
-      const value = ta.value
-      if (value[off] !== '\uFFFC') return
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
-      setter.call(ta, value.slice(0, off) + value.slice(off + 1))
-      ta.dispatchEvent(new Event('input', { bubbles: true }))
-      ta.focus()
-    }
-
-    /** The reference dock: full-path chips above the composer, one per pending '@file'. */
-    function FileRefDock(props) {
-      const input = props.input
-      const refs = (input && input.occurrences || []).filter(function (o) { return o.source === 'file' })
-      if (refs.length === 0) return null
-      const items = refs.map(function (occ) {
-        const label = occ.label || '@' + (occ.ref || '')
-        const path = String(label).replace(/^@/, '')
-        return react.createElement(
-          'span',
-          {
-            key: occ.occurrenceId,
-            className: 'fr-ref',
-            title: label,
-            onClick: function (e) {
-              const seat = e.currentTarget.closest('[data-composer-seat]')
-              const chip = seat
-                ? seat.querySelector('[data-decoration="chip"][data-occurrence="' + occ.occurrenceId + '"]')
-                : null
-              openPreviewForPath(path, chip, props.session && props.session.sessionId)
-            }
-          },
-          label,
-          react.createElement('button', {
-            type: 'button',
-            className: 'fr-x',
-            title: '移除引用',
-            onClick: function (e) {
-              e.stopPropagation()
-              const seat = e.currentTarget.closest('[data-composer-seat]')
-              removeRef(occ.occurrenceId, seat || document)
-            }
-          }, '✕')
-        )
-      })
-      return react.createElement('div', { className: 'fr-dock', 'data-fr-dock': true }, items)
-    }
-
+    /** Click in the composer textarea: if the caret sits on an '@path' token, open its preview. */
     function onDocClick(e) {
-      const el = e.target && e.target.closest ? e.target.closest('[data-decoration="chip"]') : null
-      if (!el) return
       if (overlay) return
-      chipEl = el
-      openPreview()
+      const ta = e.target
+      if (!ta || ta.tagName !== 'TEXTAREA' || !ta.hasAttribute('data-phase')) return
+      const token = tokenAt(ta.value, ta.selectionStart)
+      if (!token) return
+      openPreviewForPath(token.path, ta, token, activeSessionId)
     }
 
     function apply(ctx) {
-      const slots = ctx.get('slots')
-      if (slots !== undefined) {
-        ctx.effect(function () {
-          return slots.inject('conversation.input.dock', function () {
-            return slots.register({
-              name: 'conversation.input.dock',
-              id: 'file-refs',
-              order: 1
-            }, FileRefDock)
-          })
-        }, 'harness-file-ref: reference dock')
-      }
       const inputTriggers = ctx.get('inputTriggers')
       if (inputTriggers === undefined) {
         console.error('[harness-file-ref] inputTriggers service unavailable')
@@ -589,7 +469,7 @@ window.__ModuleLoader__.load({
 
     exports.source = source
     exports.apply = apply
-    exports.inject = ['inputTriggers', 'slots']
+    exports.inject = ['inputTriggers']
     return module.exports
   }
 })
