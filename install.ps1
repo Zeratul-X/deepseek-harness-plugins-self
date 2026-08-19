@@ -1,4 +1,4 @@
-﻿# dsh-harness-plugins 一键安装脚本
+# dsh-harness-plugins 一键安装脚本
 # 用法: powershell -ExecutionPolicy Bypass -File .\install.ps1
 # 安装后请重启 DeepSeek Harness 生效。
 
@@ -13,8 +13,6 @@ $patchFile = Join-Path $dshHome 'cordis.patch.yml'
 # 插件目录名 -> npm 包名
 $map = @{
   'pet'      = 'harness-pet'
-  'term'     = 'harness-term'
-  'diffs'    = 'harness-diffs'
   'vord'     = 'harness-vord'
   'file-ref' = 'harness-file-ref'
 }
