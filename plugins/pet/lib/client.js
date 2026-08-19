@@ -5,8 +5,10 @@ window.__ModuleLoader__.load({
     var module = { exports: {} }
     var exports = module.exports
     var React = require('react')
+    var ReactDOM = require('react-dom')
 
-    const POS_KEY = 'dsh.pet.pos.v1'
+    // v2：默认落点从右下角改为左下角，旧 v1 保存的位置作废一次
+    const POS_KEY = 'dsh.pet.pos.v2'
     const HUNGER_KEY = 'dsh.pet.hunger.v1'
     const SCALE_KEY = 'dsh.pet.scale.v1'
     const PICK = (arr) => arr[Math.floor(Math.random() * arr.length)]
@@ -40,9 +42,9 @@ window.__ModuleLoader__.load({
     }
 
     function initialPos() {
-      // 重启/无保存位置时默认放在右下角（宠物尺寸 FW×FH，留 24px 边距）
+      // 重启/无保存位置时默认放在左下角（宠物尺寸 FW×FH，留 24px 边距）
       const vp = viewportSize()
-      const fallback = vp ? { x: Math.max(0, vp.w - FW - 24), y: Math.max(0, vp.h - FH - 24) } : { x: 40, y: 60 }
+      const fallback = vp ? { x: 24, y: Math.max(0, vp.h - FH - 24) } : { x: 24, y: 60 }
       try {
         const raw = localStorage.getItem(POS_KEY)
         if (raw) {
@@ -240,10 +242,12 @@ window.__ModuleLoader__.load({
         ),
         React.createElement('span', { style: { fontVariantNumeric: 'tabular-nums' } }, Math.round(hunger)),
       )
-      return React.createElement('div', {
+      // portal 到 document.body：跳出 shell.overlay 的 stacking context（z-index 20），
+      // 配合超大 zIndex 保证悬浮在最上层（盖过设置面板等 z-index 1000 的浮层）
+      return ReactDOM.createPortal(React.createElement('div', {
         ref: rootRef,
         style: {
-          position: 'fixed', left: pos.x, top: pos.y, zIndex: 10000, pointerEvents: 'auto', userSelect: 'none',
+          position: 'fixed', left: pos.x, top: pos.y, zIndex: 2147483000, pointerEvents: 'auto', userSelect: 'none',
           transform: 'scale(' + scale + ')', transformOrigin: '0 0',
         },
         onPointerDown: onDown,
@@ -289,7 +293,7 @@ window.__ModuleLoader__.load({
             },
           }),
         ),
-      )
+      ), document.body)
     }
 
     function apply(ctx) {
